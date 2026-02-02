@@ -1,0 +1,77 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper function to check if user is admin
+    function isAdmin() {
+      return isAuthenticated() && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    
+    // Helper function to check if user owns the resource
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // Users collection
+    match /users/{userId} {
+      // Users can read their own profile, admins can read all
+      allow read: if isOwner(userId) || isAdmin();
+      
+      // Users can only update their own profile (excluding role field)
+      allow update: if isOwner(userId) && 
+                       request.resource.data.role == resource.data.role;
+      
+      // Only authentication system creates user documents
+      allow create: if isOwner(userId);
+      
+      // Users cannot delete their profile (use admin or auth system)
+      allow delete: if false;
+    }
+    
+    // Questions collection
+    match /questions/{questionId} {
+      // Anyone authenticated can read questions
+      allow read: if isAuthenticated();
+      
+      // Only admins can create/update/delete questions
+      allow create, update, delete: if isAdmin();
+    }
+    
+    // Tests collection  
+    match /tests/{testId} {
+      // Anyone authenticated can read tests
+      allow read: if isAuthenticated();
+      
+      // Only admins can create/update/delete tests
+      allow create, update, delete: if isAdmin();
+    }
+    
+    // Test attempts collection
+    match /attempts/{attemptId} {
+      // Students can read their own attempts, admins can read all
+      allow read: if isAuthenticated() && 
+                     (resource.data.studentId == request.auth.uid || isAdmin());
+      
+      // Students can create their own attempts
+      allow create: if isAuthenticated() && 
+                       request.resource.data.studentId == request.auth.uid &&
+                       request.resource.data.submittedAt is timestamp;
+      
+      // Attempts are immutable after creation (no updates or deletes)
+      allow update, delete: if false;
+    }
+    
+    // System metadata (for quota tracking, etc.)
+    match /metadata/{document=**} {
+      allow read: if isAdmin();
+      allow write: if false; // Only server-side operations
+    }
+  }
+}
