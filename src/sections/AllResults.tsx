@@ -50,7 +50,7 @@ export function AllResults({
     });
   }, [tests, filterClass]);
 
-  // Get test statistics
+  // Get test statistics (based on FIRST attempt only)
   const testStats = useMemo(() => {
     const stats = new Map<string, {
       totalAttempts: number;
@@ -61,16 +61,31 @@ export function AllResults({
 
     filteredTests.forEach(test => {
       const testAttempts = completedAttempts.filter(a => a.testId === test.id);
-      const uniqueStudentIds = new Set(testAttempts.map(a => a.studentId));
-      const avgScore = testAttempts.length > 0
-        ? testAttempts.reduce((sum, a) => sum + (a.percentage || 0), 0) / testAttempts.length
+
+      // Filter for first attempts only
+      const firstAttemptsMap = new Map<string, TestAttempt>();
+      // Sort to ensure we get earliest
+      const sortedAttempts = [...testAttempts].sort((a, b) =>
+        new Date(a.startedAt || 0).getTime() - new Date(b.startedAt || 0).getTime()
+      );
+
+      sortedAttempts.forEach(a => {
+        if (!firstAttemptsMap.has(a.studentId)) {
+          firstAttemptsMap.set(a.studentId, a);
+        }
+      });
+
+      const firstAttempts = Array.from(firstAttemptsMap.values());
+
+      const avgScore = firstAttempts.length > 0
+        ? firstAttempts.reduce((sum, a) => sum + (a.percentage || 0), 0) / firstAttempts.length
         : 0;
 
       stats.set(test.id, {
-        totalAttempts: testAttempts.length,
+        totalAttempts: firstAttempts.length, // Count of unique first attempts (students)
         avgScore,
-        uniqueStudents: uniqueStudentIds.size,
-        attempts: testAttempts,
+        uniqueStudents: firstAttemptsMap.size,
+        attempts: firstAttempts,
       });
     });
 
@@ -83,15 +98,21 @@ export function AllResults({
 
     const testAttempts = completedAttempts.filter(a => a.testId === selectedTestId);
 
-    // Group by student, get their best/latest attempt
+    // Group by student, get their FIRST attempt
     const studentMap = new Map<string, TestAttempt>();
-    testAttempts.forEach(attempt => {
-      const existing = studentMap.get(attempt.studentId);
-      if (!existing || (attempt.percentage || 0) > (existing.percentage || 0)) {
+
+    // Sort by date ascending
+    const sortedAttempts = [...testAttempts].sort((a, b) =>
+      new Date(a.startedAt || 0).getTime() - new Date(b.startedAt || 0).getTime()
+    );
+
+    sortedAttempts.forEach(attempt => {
+      if (!studentMap.has(attempt.studentId)) {
         studentMap.set(attempt.studentId, attempt);
       }
     });
 
+    // Sort by percentage for the rank list
     return Array.from(studentMap.values()).sort((a, b) =>
       (b.percentage || 0) - (a.percentage || 0)
     );
@@ -138,19 +159,33 @@ export function AllResults({
   // Summary stats
   const summaryStats = useMemo(() => {
     const totalTests = filteredTests.length;
-    const totalAttempts = completedAttempts.filter(a =>
+
+    // Filter out relevant attempts
+    const relevantAttempts = completedAttempts.filter(a =>
       filteredTests.some(t => t.id === a.testId)
-    ).length;
+    );
+
+    // Get unique first attempts
+    const firstAttemptsMap = new Map<string, TestAttempt>();
+    const sortedAttempts = [...relevantAttempts].sort((a, b) =>
+      new Date(a.startedAt || 0).getTime() - new Date(b.startedAt || 0).getTime()
+    );
+
+    sortedAttempts.forEach(attempt => {
+      const key = `${attempt.studentId}-${attempt.testId}`;
+      if (!firstAttemptsMap.has(key)) {
+        firstAttemptsMap.set(key, attempt);
+      }
+    });
+
+    const firstAttempts = Array.from(firstAttemptsMap.values());
+
+    const totalAttempts = firstAttempts.length;
     const avgScore = totalAttempts > 0
-      ? completedAttempts
-        .filter(a => filteredTests.some(t => t.id === a.testId))
-        .reduce((sum, a) => sum + (a.percentage || 0), 0) / totalAttempts
+      ? firstAttempts.reduce((sum, a) => sum + (a.percentage || 0), 0) / totalAttempts
       : 0;
-    const uniqueStudents = new Set(
-      completedAttempts
-        .filter(a => filteredTests.some(t => t.id === a.testId))
-        .map(a => a.studentId)
-    ).size;
+
+    const uniqueStudents = new Set(firstAttempts.map(a => a.studentId)).size;
 
     return { totalTests, totalAttempts, avgScore, uniqueStudents };
   }, [filteredTests, completedAttempts]);

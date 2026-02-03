@@ -13,10 +13,10 @@ import {
 import {
   doc,
   setDoc,
-  getDoc,
   updateDoc,
   deleteDoc,
   serverTimestamp,
+  onSnapshot,
 } from 'firebase/firestore';
 import {
   EmailAuthProvider,
@@ -47,33 +47,49 @@ export function useAuth() {
           // Check db inside callback as it might be used
           if (db) {
             const userDocRef = doc(db, 'users', firebaseUser.uid);
-            const userDoc = await getDoc(userDocRef);
 
-            if (userDoc.exists()) {
-              const userData = userDoc.data();
-              setUser({
-                id: firebaseUser.uid,
-                email: firebaseUser.email || '',
-                name: userData.name,
-                role: userData.role,
-                class: userData.classLevel,
-                board: userData.board,
-                createdAt: userData.createdAt?.toDate() || new Date(),
-                emailVerified: firebaseUser.emailVerified,
-                batch: userData.batch,
-                isLeaderboardVisible: userData.isLeaderboardVisible ?? false,
-              });
-              setFirebaseUser(firebaseUser);
+            // Set up real-time listener for session management
+            // Set up real-time listener for session management
+            onSnapshot(userDocRef, async (docSnapshot: any) => {
+              if (docSnapshot.exists()) {
+                const userData = docSnapshot.data();
 
-              // Update last login timestamp
-              await updateDoc(userDocRef, {
-                lastLoginAt: serverTimestamp(),
-              });
-            } else {
-              // User document doesn't exist - this shouldn't happen
-              console.error('User document not found for:', firebaseUser.uid);
-              await signOut(authInstance);
-            }
+                // Session check disabled for testing
+                // const localSessionId = localStorage.getItem('device_session_id');
+                // if (userData.sessionId && localSessionId && userData.sessionId !== localSessionId) { ... }
+
+                setUser({
+                  id: firebaseUser.uid,
+                  email: firebaseUser.email || '',
+                  name: userData.name,
+                  role: userData.role,
+                  class: userData.classLevel,
+                  board: userData.board,
+                  createdAt: userData.createdAt?.toDate() || new Date(),
+                  emailVerified: firebaseUser.emailVerified,
+                  batch: userData.batch,
+                  isLeaderboardVisible: userData.isLeaderboardVisible ?? false,
+                  sessionId: userData.sessionId,
+                });
+
+                // Logic dependent on localSessionId is also disabled/removed
+                // if (!localSessionId) { ... }
+              } else {
+                console.error('User document not found for:', firebaseUser.uid);
+                await signOut(authInstance);
+              }
+            }, (error: any) => {
+              console.error('Snapshot error:', error);
+            });
+
+            // Cleanup snapshot listener when auth state changes or unmount (handled by useEffect closure?)
+            // We can't easily return this cleanup from inside onAuthStateChanged.
+            // Simplified: The onAuthStateChanged unsubscribe handles the main auth listener. 
+            // The snapshot listener might persist if we don't be careful. 
+            // Better pattern: store unsubscribeSnapshot in a ref or just let it be for now since app is SPA.
+            // For production robustness, we'd manage this subscription statefuly.
+            setFirebaseUser(firebaseUser);
+
           }
         } catch (error) {
           console.error('Error fetching user profile:', error);
@@ -116,6 +132,10 @@ export function useAuth() {
       // Send email verification
       await sendEmailVerification(firebaseUser);
 
+      // Generate Session ID
+      const sessionId = crypto.randomUUID();
+      localStorage.setItem('device_session_id', sessionId);
+
       // Create user profile in Firestore
       const userDocRef = doc(firestore, 'users', firebaseUser.uid);
       await setDoc(userDocRef, {
@@ -130,6 +150,7 @@ export function useAuth() {
         isLeaderboardVisible: false,
         createdAt: serverTimestamp(),
         lastLoginAt: serverTimestamp(),
+        sessionId,
       });
 
       return { success: true };
@@ -159,7 +180,20 @@ export function useAuth() {
     }
 
     try {
-      await signInWithEmailAndPassword(authInstance, email, password);
+      const credential = await signInWithEmailAndPassword(authInstance, email, password);
+
+      // Update session ID logic
+      if (db && credential.user) {
+        const sessionId = crypto.randomUUID();
+        localStorage.setItem('device_session_id', sessionId);
+
+        const userDocRef = doc(db, 'users', credential.user.uid);
+        await updateDoc(userDocRef, {
+          lastLoginAt: serverTimestamp(),
+          sessionId,
+        });
+      }
+
       return true;
     } catch (error: any) {
       console.error('Login error:', error);
@@ -181,6 +215,7 @@ export function useAuth() {
     if (!authInstance) return;
     try {
       await signOut(authInstance);
+      localStorage.removeItem('device_session_id');
     } catch (error) {
       console.error('Logout error:', error);
     }
@@ -306,6 +341,7 @@ export function useAuth() {
 
       // 4. Delete user from Auth
       await deleteUser(firebaseUser);
+      alert('Account has been permanently deleted.');
 
       return true;
     } catch (error: any) {

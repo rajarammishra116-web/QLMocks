@@ -59,15 +59,7 @@ interface StudentDashboardProps {
 
 const COLORS = ['#3b82f6', '#ef4444', '#f59e0b'];
 
-const container = {
-  hidden: { opacity: 0 },
-  show: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.1
-    }
-  }
-};
+
 
 const item = {
   hidden: { opacity: 0, y: 20 },
@@ -243,24 +235,24 @@ export function StudentDashboard({
         <motion.header
           initial={{ y: -20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
-          className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-md sticky top-0 z-10 border-b dark:border-gray-800 shadow-sm transition-colors duration-300"
+          className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-md sticky top-0 z-10 border-b dark:border-gray-800 shadow-sm transition-colors duration-300 overflow-hidden"
         >
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg transform hover:scale-105 transition-transform">
-                  <GraduationCap className="w-7 h-7 text-white" />
+            <div className="flex items-center justify-between gap-2 sm:gap-4">
+              <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg transform hover:scale-105 transition-transform shrink-0">
+                  <GraduationCap className="w-5 h-5 sm:w-7 sm:h-7 text-white" />
                 </div>
 
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" className="h-auto p-2 hover:bg-gray-100 dark:hover:bg-gray-800 -ml-2 text-left">
-                      <div>
-                        <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 dark:text-gray-100 flex items-center gap-2">
-                          {t('dash.welcome')}, {user.name}!
-                          <ChevronDown className="w-4 h-4 text-gray-500 dark:text-gray-400 dark:text-gray-400" />
+                    <Button variant="ghost" className="h-auto p-1 sm:p-2 hover:bg-gray-100 dark:hover:bg-gray-800 text-left min-w-0 flex-1">
+                      <div className="truncate">
+                        <h1 className="text-base sm:text-xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-1 sm:gap-2 truncate">
+                          <span className="truncate">{t('dash.welcome')}, {user.name}</span>
+                          <ChevronDown className="w-4 h-4 text-gray-500 dark:text-gray-400 shrink-0" />
                         </h1>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-400 font-normal">
+                        <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 font-normal truncate">
                           {t('dash.class')} {user.class}
                         </p>
                       </div>
@@ -282,18 +274,18 @@ export function StudentDashboard({
                 </DropdownMenu>
               </div>
 
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 sm:gap-3 shrink-0">
                 <Button
                   variant="ghost"
                   size="icon"
                   onClick={toggleTheme}
-                  className="text-gray-500 dark:text-gray-400 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
+                  className="w-8 h-8 sm:w-10 sm:h-10 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
                 >
-                  {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+                  {theme === 'dark' ? <Sun className="w-4 h-4 sm:w-5 sm:h-5" /> : <Moon className="w-4 h-4 sm:w-5 sm:h-5" />}
                 </Button>
-                <Button onClick={onStartTest} className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:shadow-lg transition-all duration-300 transform hover:-translate-y-0.5 text-white">
-                  <BookOpen className="w-4 h-4 mr-2" />
-                  {t('dash.startTest')}
+                <Button onClick={onStartTest} className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:shadow-lg transition-all duration-300 transform hover:-translate-y-0.5 text-white h-9 px-3 sm:h-10 sm:px-4 text-xs sm:text-sm">
+                  <BookOpen className="w-4 h-4 sm:mr-2" />
+                  <span className="hidden sm:inline">{t('dash.startTest')}</span>
                 </Button>
               </div>
             </div>
@@ -302,7 +294,7 @@ export function StudentDashboard({
 
         {/* Profile Dialog */}
         <Dialog open={isProfileOpen} onOpenChange={setIsProfileOpen}>
-          <DialogContent className="sm:max-w-[425px]">
+          <DialogContent className="sm:max-w-[425px] max-h-[85vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Student Profile</DialogTitle>
               <DialogDescription>
@@ -423,20 +415,20 @@ export function StudentDashboard({
                   <div className="w-20 h-20 bg-blue-100/50 rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse">
                     <BookOpen className="w-10 h-10 text-blue-600" />
                   </div>
-                  <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">{t('dash.noTests')}</h3>
-                  <p className="text-gray-500 dark:text-gray-400 mb-6">Start your first test to see your performance analytics</p>
-                  <Button onClick={onStartTest} className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:shadow-lg transition-all text-white">
-                    <BookOpen className="w-4 h-4 mr-2" />
-                    {t('dash.startTest')}
+                  <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">You haven't appeared for any tests yet</h3>
+                  <p className="text-gray-500 dark:text-gray-400 mb-6">Click the button below to start your first test and track your progress.</p>
+                  <Button onClick={onStartTest} size="lg" className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:shadow-lg transition-all text-white px-8">
+                    <BookOpen className="w-5 h-5 mr-2" />
+                    Start First Test
                   </Button>
                 </CardContent>
               </Card>
             </motion.div>
           ) : (
             <motion.div
-              variants={container}
-              initial="hidden"
-              animate="show"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.5 }}
               className="space-y-6"
             >
               {/* Continue Learning Section */}

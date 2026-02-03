@@ -96,8 +96,18 @@ export function TakeTest({
         setAttemptId(id);
         attemptIdRef.current = id;
       });
+    } else if (existingAttempt && existingAttempt.id !== attemptIdRef.current) {
+      // Prop update handling
+      console.log('New existingAttempt prop received:', existingAttempt.id);
+      setAttemptId(existingAttempt.id);
+      attemptIdRef.current = existingAttempt.id;
+      if (existingAttempt.answers && Object.keys(answers).length === 0) {
+        console.log('Hydrating answers from prop update:', Object.keys(existingAttempt.answers).length);
+        setAnswers(existingAttempt.answers);
+        answersRef.current = existingAttempt.answers;
+      }
     }
-  }, [existingAttempt, test.id, onStartAttempt]);
+  }, [existingAttempt, test.id, onStartAttempt, answers]);
 
   const [shuffledQuestions] = useState(() => {
     if (!questions || questions.length === 0) {
@@ -135,7 +145,10 @@ export function TakeTest({
     if (hasCheckedInterruption.current) return;
     hasCheckedInterruption.current = true;
 
-    const savedState = localStorage.getItem(`exam_state_${test.id}_${user.id}`);
+    const storageKey = `exam_state_${test.id}_${user.id}`;
+    const savedState = localStorage.getItem(storageKey);
+    console.log(`Checking localStorage [${storageKey}]:`, savedState ? 'Found' : 'Empty');
+
     let recoveredIds: { attemptId?: string } = {};
 
     // 1. Try to recover from Local Storage (Best Source)

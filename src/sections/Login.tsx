@@ -76,7 +76,7 @@ export function Login({ onLogin, onRegister, t, onForgotPassword }: LoginProps) 
 
     const success = await onLogin(loginEmail, loginPassword);
     if (!success) {
-      setError('Invalid email or password. Try demo accounts.');
+      setError('Invalid email or password.');
     }
 
     setIsLoading(false);
@@ -143,37 +143,43 @@ export function Login({ onLogin, onRegister, t, onForgotPassword }: LoginProps) 
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex flex-col items-center justify-center p-4 force-light">
+    <div className="min-h-screen bg-[conic-gradient(at_top_right,_var(--tw-gradient-stops))] from-indigo-100 via-slate-100 to-teal-100 flex flex-col items-center justify-center p-4 force-light">
       <motion.div
-        initial={{ opacity: 0, y: 20 }}
+        initial={{ opacity: 0, y: 30 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
+        transition={{ duration: 0.6, ease: "easeOut" }}
         className="w-full max-w-md"
       >
         {/* Logo */}
-        <div className="text-center mb-8">
-          <div className="flex justify-center mb-4">
-            <img
-              src="/ql-logo.png"
-              alt="QLMocks Logo"
-              className="h-24 w-auto object-contain"
-            />
+        <div className="text-center mb-10">
+          <div className="flex justify-center mb-6">
+            <div className="relative group">
+              <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-full blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200"></div>
+              <img
+                src="/ql-logo.png"
+                alt="QLMocks Logo"
+                className="relative h-32 w-auto object-contain drop-shadow-xl transform transition hover:scale-105 duration-300"
+              />
+            </div>
           </div>
           <motion.div
-            initial={{ opacity: 0, y: 10 }}
+            initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
+            transition={{ delay: 0.3 }}
           >
-            <h1 className="text-3xl font-bold text-gray-900 ">QLMocks</h1>
-            <p className="text-medium text-gray-600 mt-2 font-serif italic">"From Ignorance to Enlightenment"</p>
-            <p className="text-sm text-gray-500 mt-1">Classes 9-12 | CBSE/State Board Ready</p>
+            <h1 className="text-6xl text-gray-900 mb-2 font-bold tracking-tight" style={{ fontFamily: "'Outfit', 'Google Sans', sans-serif" }}>QLmocks</h1>
+            <div className="flex items-center justify-center gap-3 mt-4 text-xs font-semibold text-indigo-900/60 uppercase tracking-[0.2em]">
+              <span>Class 9-12</span>
+              <span className="w-1.5 h-1.5 bg-indigo-400 rounded-full"></span>
+              <span>CBSE & State Board</span>
+            </div>
           </motion.div>
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-2 mb-6 bg-white/50 dark:bg-white/50 backdrop-blur-sm p-1 rounded-xl">
-            <TabsTrigger value="login" className="rounded-lg data-[state=active]:bg-white dark:data-[state=active]:bg-white data-[state=active]:shadow-sm">{t('auth.login')}</TabsTrigger>
-            <TabsTrigger value="register" className="rounded-lg data-[state=active]:bg-white dark:data-[state=active]:bg-white data-[state=active]:shadow-sm">{t('auth.register')}</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-2 mb-8 bg-white/40 dark:bg-white/40 backdrop-blur-md p-1.5 rounded-2xl shadow-inner border border-white/20">
+            <TabsTrigger value="login" className="rounded-xl font-medium tracking-wide data-[state=active]:bg-white data-[state=active]:text-indigo-700 data-[state=active]:shadow-lg transition-all duration-300">{t('auth.login')}</TabsTrigger>
+            <TabsTrigger value="register" className="rounded-xl font-medium tracking-wide data-[state=active]:bg-white data-[state=active]:text-indigo-700 data-[state=active]:shadow-lg transition-all duration-300">{t('auth.register')}</TabsTrigger>
           </TabsList>
 
           <TabsContent value="login">
@@ -200,7 +206,7 @@ export function Login({ onLogin, onRegister, t, onForgotPassword }: LoginProps) 
                           id="email"
                           type="email"
                           placeholder="Enter your email"
-                          className="pl-10 bg-white/50 dark:bg-white/50"
+                          className="pl-10 h-11 bg-white/60 border-gray-200 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 transition-all rounded-xl"
                           value={loginEmail}
                           onChange={(e) => setLoginEmail(e.target.value)}
                           required
@@ -227,7 +233,7 @@ export function Login({ onLogin, onRegister, t, onForgotPassword }: LoginProps) 
                             id="password"
                             type={showPassword ? "text" : "password"}
                             placeholder="Enter your password"
-                            className="pl-10 pr-10 bg-white/50 dark:bg-white/50"
+                            className="pl-10 pr-10 h-11 bg-white/60 border-gray-200 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 transition-all rounded-xl"
                             value={loginPassword}
                             onChange={(e) => setLoginPassword(e.target.value)}
                             required
@@ -259,7 +265,7 @@ export function Login({ onLogin, onRegister, t, onForgotPassword }: LoginProps) 
 
                     <Button
                       type="submit"
-                      className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:shadow-lg transition-all duration-300 transform hover:-translate-y-0.5"
+                      className="w-full h-11 bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 hover:from-blue-700 hover:via-indigo-700 hover:to-violet-700 text-white shadow-lg shadow-indigo-500/30 hover:shadow-indigo-500/50 transition-all duration-300 transform hover:-translate-y-0.5 rounded-xl font-medium tracking-wide text-base"
                       disabled={isLoading}
                     >
                       {isLoading ? t('common.loading') : (forgotPasswordMode ? 'Send Reset Link' : t('auth.login'))}
@@ -340,7 +346,7 @@ export function Login({ onLogin, onRegister, t, onForgotPassword }: LoginProps) 
                 exit={{ opacity: 0, x: -20 }}
                 transition={{ duration: 0.3 }}
               >
-                <Card className="border-none shadow-xl bg-white/80 dark:bg-white/80 backdrop-blur-md">
+                <Card className="border-none shadow-2xl bg-white/70 dark:bg-white/70 backdrop-blur-xl ring-1 ring-white/50">
                   <CardHeader>
                     <CardTitle>{t('auth.register')}</CardTitle>
                     <CardDescription>

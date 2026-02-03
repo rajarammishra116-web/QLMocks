@@ -27,8 +27,11 @@ import {
   Trash2,
   TrendingUp,
   TrendingDown,
-  Activity
+  Activity,
+  Sun,
+  Moon
 } from 'lucide-react';
+import { useTheme } from '@/contexts/ThemeContext';
 import { cn } from '@/lib/utils';
 
 import type { User, Test, TestAttempt, Question } from '@/types';
@@ -79,26 +82,45 @@ export function AdminDashboard({
   getSubjectName,
   t,
 }: AdminDashboardProps) {
+  const { theme, toggleTheme } = useTheme();
   const [activeTab, setActiveTab] = useState('overview');
   const [testToDelete, setTestToDelete] = useState<string | null>(null);
   const [isCleaningUp, setIsCleaningUp] = useState(false);
   const [isCleaningAttempts, setIsCleaningAttempts] = useState(false);
 
   const stats = useMemo(() => {
+    // Filter attempts to include only the FIRST attempt per student per test
+    const attemptsMap = new Map<string, TestAttempt>();
+
+    // Sort by date ascending to ensure we process earlier attempts first
+    const sortedAttempts = [...attempts].sort((a, b) =>
+      new Date(a.startedAt || 0).getTime() - new Date(b.startedAt || 0).getTime()
+    );
+
+    sortedAttempts.forEach(attempt => {
+      const key = `${attempt.studentId}-${attempt.testId}`;
+      if (!attemptsMap.has(key)) {
+        attemptsMap.set(key, attempt);
+      }
+    });
+
+    const uniqueAttempts = Array.from(attemptsMap.values());
+
+    // ... existing stats logic but using uniqueAttempts ...
     const totalQuestions = questions.length;
     const totalTests = tests.length;
-    const totalAttempts = attempts.length;
-    const avgScore = attempts.length > 0
-      ? attempts.reduce((sum, a) => sum + (a.percentage || 0), 0) / attempts.length
+    const totalAttempts = uniqueAttempts.length; // Counting unique first attempts
+    const avgScore = uniqueAttempts.length > 0
+      ? uniqueAttempts.reduce((sum, a) => sum + (a.percentage || 0), 0) / uniqueAttempts.length
       : 0;
 
-    // Calculate trends (compare last 7 days vs previous 7 days)
+    // Calculate trends (compare last 7 days vs previous 7 days) based on UNIQUE attempts
     const now = new Date();
     const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const fourteenDaysAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
 
-    const recentAttempts = attempts.filter(a => a.submittedAt && new Date(a.submittedAt) > sevenDaysAgo).length;
-    const previousAttempts = attempts.filter(a => {
+    const recentAttempts = uniqueAttempts.filter(a => a.submittedAt && new Date(a.submittedAt) > sevenDaysAgo).length;
+    const previousAttempts = uniqueAttempts.filter(a => {
       if (!a.submittedAt) return false;
       const date = new Date(a.submittedAt);
       return date > fourteenDaysAgo && date <= sevenDaysAgo;
@@ -117,6 +139,7 @@ export function AdminDashboard({
       recentAttempts
     };
   }, [questions, tests, attempts]);
+
 
   const recentTests = useMemo(() => {
     return [...tests]
@@ -152,12 +175,12 @@ export function AdminDashboard({
   };
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-300">
       {/* Header */}
       <motion.header
         initial={{ y: -20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        className="glass-card sticky top-0 z-10 border-b"
+        className="glass-card sticky top-0 z-10 border-b bg-white/80 dark:bg-gray-800/80 backdrop-blur-md dark:border-gray-700"
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
@@ -166,14 +189,24 @@ export function AdminDashboard({
                 <GraduationCap className="w-7 h-7 text-white" />
               </div>
               <div>
-                <h1 className="text-xl font-bold text-gray-900">{t('admin.title')}</h1>
-                <p className="text-sm text-muted-foreground">Welcome, {user.name}</p>
+                <h1 className="text-xl font-bold text-gray-900 dark:text-white">{t('admin.title')}</h1>
+                <p className="text-sm text-muted-foreground dark:text-gray-400">Welcome, {user.name}</p>
               </div>
             </div>
-            <Button variant="outline" onClick={onLogout}>
-              <LogOut className="w-4 h-4 mr-2" />
-              {t('nav.logout')}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={toggleTheme}
+                className="text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"
+              >
+                {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+              </Button>
+              <Button variant="outline" onClick={onLogout}>
+                <LogOut className="w-4 h-4 mr-2" />
+                {t('nav.logout')}
+              </Button>
+            </div>
           </div>
         </div>
       </motion.header>
@@ -196,7 +229,7 @@ export function AdminDashboard({
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <motion.div variants={item}>
                   <Card
-                    className="elevated-card cursor-pointer group"
+                    className="elevated-card cursor-pointer group bg-white dark:bg-gray-800 dark:border-gray-700"
                     onClick={onUploadQuestions}
                   >
                     <CardContent className="p-6 flex items-center gap-4">
@@ -204,8 +237,8 @@ export function AdminDashboard({
                         <Upload className="w-7 h-7 text-white" />
                       </div>
                       <div>
-                        <h3 className="font-semibold text-gray-900">{t('admin.upload')}</h3>
-                        <p className="text-sm text-muted-foreground">Import from Excel</p>
+                        <h3 className="font-semibold text-gray-900 dark:text-white">{t('admin.upload')}</h3>
+                        <p className="text-sm text-muted-foreground dark:text-gray-400">Import from Excel</p>
                       </div>
                     </CardContent>
                   </Card>
@@ -213,7 +246,7 @@ export function AdminDashboard({
 
                 <motion.div variants={item}>
                   <Card
-                    className="elevated-card cursor-pointer group"
+                    className="elevated-card cursor-pointer group bg-white dark:bg-gray-800 dark:border-gray-700"
                     onClick={onCreateTest}
                   >
                     <CardContent className="p-6 flex items-center gap-4">
@@ -221,8 +254,8 @@ export function AdminDashboard({
                         <Plus className="w-7 h-7 text-white" />
                       </div>
                       <div>
-                        <h3 className="font-semibold text-gray-900">{t('admin.createTest')}</h3>
-                        <p className="text-sm text-muted-foreground">Create new test</p>
+                        <h3 className="font-semibold text-gray-900 dark:text-white">{t('admin.createTest')}</h3>
+                        <p className="text-sm text-muted-foreground dark:text-gray-400">Create new test</p>
                       </div>
                     </CardContent>
                   </Card>
@@ -230,7 +263,7 @@ export function AdminDashboard({
 
                 <motion.div variants={item}>
                   <Card
-                    className="elevated-card cursor-pointer group"
+                    className="elevated-card cursor-pointer group bg-white dark:bg-gray-800 dark:border-gray-700"
                     onClick={onViewResults}
                   >
                     <CardContent className="p-6 flex items-center gap-4">
@@ -238,8 +271,8 @@ export function AdminDashboard({
                         <BarChart3 className="w-7 h-7 text-white" />
                       </div>
                       <div>
-                        <h3 className="font-semibold text-gray-900">{t('admin.viewResults')}</h3>
-                        <p className="text-sm text-muted-foreground">View all attempts</p>
+                        <h3 className="font-semibold text-gray-900 dark:text-white">{t('admin.viewResults')}</h3>
+                        <p className="text-sm text-muted-foreground dark:text-gray-400">View all attempts</p>
                       </div>
                     </CardContent>
                   </Card>
@@ -249,15 +282,15 @@ export function AdminDashboard({
               {/* Stats Overview with Trends */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <motion.div variants={item}>
-                  <Card className="stat-card text-blue-600">
+                  <Card className="stat-card text-blue-600 bg-white dark:bg-gray-800 dark:border-gray-700">
                     <CardContent className="p-6">
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="text-sm text-muted-foreground">{t('admin.totalQuestions')}</p>
-                          <p className="text-3xl font-bold text-gray-900 mt-1">{stats.totalQuestions}</p>
+                          <p className="text-sm text-muted-foreground dark:text-gray-400">{t('admin.totalQuestions')}</p>
+                          <p className="text-3xl font-bold text-gray-900 dark:text-white mt-1">{stats.totalQuestions}</p>
                         </div>
-                        <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                          <FileText className="w-6 h-6 text-blue-600" />
+                        <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center">
+                          <FileText className="w-6 h-6 text-blue-600 dark:text-blue-400" />
                         </div>
                       </div>
                     </CardContent>
@@ -265,15 +298,15 @@ export function AdminDashboard({
                 </motion.div>
 
                 <motion.div variants={item}>
-                  <Card className="stat-card text-green-600">
+                  <Card className="stat-card text-green-600 bg-white dark:bg-gray-800 dark:border-gray-700">
                     <CardContent className="p-6">
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="text-sm text-muted-foreground">{t('admin.totalTests')}</p>
-                          <p className="text-3xl font-bold text-gray-900 mt-1">{stats.totalTests}</p>
+                          <p className="text-sm text-muted-foreground dark:text-gray-400">{t('admin.totalTests')}</p>
+                          <p className="text-3xl font-bold text-gray-900 dark:text-white mt-1">{stats.totalTests}</p>
                         </div>
-                        <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
-                          <BookOpen className="w-6 h-6 text-green-600" />
+                        <div className="w-12 h-12 bg-green-100 dark:bg-green-900/30 rounded-lg flex items-center justify-center">
+                          <BookOpen className="w-6 h-6 text-green-600 dark:text-green-400" />
                         </div>
                       </div>
                     </CardContent>
@@ -281,16 +314,16 @@ export function AdminDashboard({
                 </motion.div>
 
                 <motion.div variants={item}>
-                  <Card className="stat-card text-purple-600">
+                  <Card className="stat-card text-purple-600 bg-white dark:bg-gray-800 dark:border-gray-700">
                     <CardContent className="p-6">
                       <div className="flex items-center justify-between">
                         <div className="flex-1">
-                          <p className="text-sm text-muted-foreground">Total Attempts</p>
-                          <p className="text-3xl font-bold text-gray-900 mt-1">{stats.totalAttempts}</p>
+                          <p className="text-sm text-muted-foreground dark:text-gray-400">Total Attempts</p>
+                          <p className="text-3xl font-bold text-gray-900 dark:text-white mt-1">{stats.totalAttempts}</p>
                           {stats.attemptsTrend !== 0 && (
                             <div className={cn(
                               "flex items-center gap-1 text-xs mt-2",
-                              stats.attemptsTrend > 0 ? "text-green-600" : "text-red-600"
+                              stats.attemptsTrend > 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"
                             )}>
                               {stats.attemptsTrend > 0 ? (
                                 <TrendingUp className="w-3 h-3" />
@@ -301,8 +334,8 @@ export function AdminDashboard({
                             </div>
                           )}
                         </div>
-                        <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
-                          <Users className="w-6 h-6 text-purple-600" />
+                        <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900/30 rounded-lg flex items-center justify-center">
+                          <Users className="w-6 h-6 text-purple-600 dark:text-purple-400" />
                         </div>
                       </div>
                     </CardContent>
@@ -310,15 +343,15 @@ export function AdminDashboard({
                 </motion.div>
 
                 <motion.div variants={item}>
-                  <Card className="stat-card text-amber-600">
+                  <Card className="stat-card text-amber-600 bg-white dark:bg-gray-800 dark:border-gray-700">
                     <CardContent className="p-6">
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="text-sm text-muted-foreground">Average Score</p>
-                          <p className="text-3xl font-bold text-gray-900 mt-1">{stats.avgScore.toFixed(1)}%</p>
+                          <p className="text-sm text-muted-foreground dark:text-gray-400">Average Score</p>
+                          <p className="text-3xl font-bold text-gray-900 dark:text-white mt-1">{stats.avgScore.toFixed(1)}%</p>
                         </div>
-                        <div className="w-12 h-12 bg-amber-100 rounded-lg flex items-center justify-center">
-                          <Activity className="w-6 h-6 text-amber-600" />
+                        <div className="w-12 h-12 bg-amber-100 dark:bg-amber-900/30 rounded-lg flex items-center justify-center">
+                          <Activity className="w-6 h-6 text-amber-600 dark:text-amber-400" />
                         </div>
                       </div>
                     </CardContent>
@@ -328,15 +361,15 @@ export function AdminDashboard({
 
               {/* Database Cleanup */}
               <motion.div variants={item}>
-                <Card className="elevated-card border-l-4 border-l-orange-500">
+                <Card className="elevated-card border-l-4 border-l-orange-500 bg-white dark:bg-gray-800 dark:border-gray-700 dark:border-l-orange-500">
                   <CardContent className="p-4 flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center">
-                        <Trash2 className="w-5 h-5 text-orange-600" />
+                      <div className="w-10 h-10 bg-orange-100 dark:bg-orange-900/30 rounded-lg flex items-center justify-center">
+                        <Trash2 className="w-5 h-5 text-orange-600 dark:text-orange-400" />
                       </div>
                       <div>
-                        <p className="font-medium text-gray-900">Cleanup Orphaned Questions</p>
-                        <p className="text-sm text-muted-foreground">Remove questions not linked to any test</p>
+                        <p className="font-medium text-gray-900 dark:text-white">Cleanup Orphaned Questions</p>
+                        <p className="text-sm text-muted-foreground dark:text-gray-400">Remove questions not linked to any test</p>
                       </div>
                     </div>
                     <Button
@@ -362,7 +395,7 @@ export function AdminDashboard({
               </motion.div>
 
               <motion.div variants={item}>
-                <Card className="hover:shadow-md transition-shadow">
+                <Card className="hover:shadow-md transition-shadow bg-white dark:bg-gray-800 dark:border-gray-700">
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground">
                       Storage Management
@@ -370,7 +403,7 @@ export function AdminDashboard({
                     <Trash2 className="w-4 h-4 text-red-500" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold mb-1">Old Data Cleanup</div>
+                    <div className="text-2xl font-bold mb-1 dark:text-white">Old Data Cleanup</div>
                     <p className="text-xs text-muted-foreground mb-4">
                       Delete attempts older than 30 days to free up storage.
                     </p>
@@ -403,11 +436,11 @@ export function AdminDashboard({
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Recent Tests */}
                 <motion.div variants={item}>
-                  <Card className="elevated-card">
+                  <Card className="elevated-card bg-white dark:bg-gray-800 dark:border-gray-700">
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2">
                         <BookOpen className="w-5 h-5 text-primary" />
-                        Recent Tests
+                        <span className="text-gray-900 dark:text-white">Recent Tests</span>
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
@@ -416,10 +449,10 @@ export function AdminDashboard({
                           <p className="text-muted-foreground text-center py-4">No tests created yet</p>
                         ) : (
                           recentTests.map((test) => (
-                            <div key={test.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors">
+                            <div key={test.id} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-gray-700/50 rounded-lg hover:bg-slate-100 dark:hover:bg-gray-700 transition-colors">
                               <div className="flex-1">
-                                <p className="font-medium text-gray-900">{test.name}</p>
-                                <p className="text-sm text-muted-foreground">
+                                <p className="font-medium text-gray-900 dark:text-white">{test.name}</p>
+                                <p className="text-sm text-muted-foreground dark:text-gray-400">
                                   Class {test.classLevel} • {test.totalQuestions} questions
                                 </p>
                               </div>
@@ -436,11 +469,11 @@ export function AdminDashboard({
 
                 {/* Recent Attempts */}
                 <motion.div variants={item}>
-                  <Card className="elevated-card">
+                  <Card className="elevated-card bg-white dark:bg-gray-800 dark:border-gray-700">
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2">
                         <BarChart3 className="w-5 h-5 text-primary" />
-                        Recent Attempts
+                        <span className="text-gray-900 dark:text-white">Recent Attempts</span>
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
@@ -451,10 +484,10 @@ export function AdminDashboard({
                           recentAttempts.map((attempt) => {
                             const test = tests.find(t => t.id === attempt.testId);
                             return (
-                              <div key={attempt.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                              <div key={attempt.id} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-gray-700/50 rounded-lg">
                                 <div>
-                                  <p className="font-medium text-gray-900">{test?.name || 'Unknown Test'}</p>
-                                  <p className="text-sm text-muted-foreground">
+                                  <p className="font-medium text-gray-900 dark:text-white">{test?.name || 'Unknown Test'}</p>
+                                  <p className="text-sm text-muted-foreground dark:text-gray-400">
                                     {new Date(attempt.submittedAt || Date.now()).toLocaleDateString()}
                                   </p>
                                 </div>
@@ -476,9 +509,9 @@ export function AdminDashboard({
           </TabsContent>
 
           <TabsContent value="tests">
-            <Card className="elevated-card">
+            <Card className="elevated-card bg-white dark:bg-gray-800 dark:border-gray-700">
               <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle>All Tests</CardTitle>
+                <CardTitle className="dark:text-white">All Tests</CardTitle>
                 <Button onClick={onCreateTest} className="gradient-primary text-white">
                   <Plus className="w-4 h-4 mr-2" />
                   Create Test
@@ -497,10 +530,10 @@ export function AdminDashboard({
                     </div>
                   ) : (
                     tests.map((test) => (
-                      <div key={test.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-slate-50 transition-colors">
+                      <div key={test.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-slate-50 dark:hover:bg-gray-700/50 transition-colors dark:border-gray-700">
                         <div className="flex-1">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <p className="font-medium text-gray-900">{test.name}</p>
+                            <p className="font-medium text-gray-900 dark:text-white">{test.name}</p>
                             <Badge className={getTestTypeColor(test.type)}>
                               {getTestTypeLabel(test.type)}
                             </Badge>
@@ -508,7 +541,7 @@ export function AdminDashboard({
                               <Badge variant="destructive">-{test.negativeMarkValue}</Badge>
                             )}
                           </div>
-                          <p className="text-sm text-muted-foreground mt-1">
+                          <p className="text-sm text-muted-foreground dark:text-gray-400 mt-1">
                             Class {test.classLevel} • {test.subjectIds.map(getSubjectName).join(', ')} • {test.totalQuestions} questions • {test.timeLimitMinutes} min
                           </p>
                         </div>

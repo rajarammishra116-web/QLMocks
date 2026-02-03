@@ -29,7 +29,7 @@ type View =
 
 function App() {
   const { user, isAuthenticated, isAdmin, login, register, logout, updatePassword, deleteAccount, resetPassword, isLoading: authLoading } = useAuth();
-  const data = useData(isAdmin);
+  const data = useData(user?.id, isAdmin);
   const { language, toggleLanguage, t } = useLanguage();
   const { theme } = useTheme();
 
@@ -56,7 +56,16 @@ function App() {
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
   }, [isAuthenticated, isAdmin]);
+
+  // Trigger admin data load
+  useEffect(() => {
+    if (isAuthenticated && isAdmin) {
+      data.loadAllQuestions(); // Trigger background load of all questions
+    }
+  }, [isAuthenticated, isAdmin, data.loadAllQuestions]);
 
   // Enhanced navigation that pushes history
   const navigateTo = useCallback((view: View) => {
@@ -93,7 +102,7 @@ function App() {
   }, [logout, navigateTo]);
 
   // Test handlers
-  const handleStartTest = useCallback((testId: string) => {
+  const handleStartTest = useCallback(async (testId: string) => {
     console.log('=== START TEST ===');
     const test = data.getTestById(testId);
 
@@ -104,22 +113,42 @@ function App() {
           (a.status === 'in-progress' || a.status === 'paused')
       );
 
+      // Check for total attempts count (completed + in-progress, excluding current if resuming)
+      const previousAttemptsCount = data.attempts.filter(
+        a => a.testId === testId && a.status === 'completed'
+      ).length;
+
+      if (previousAttemptsCount >= 2 && !existingAttempt) {
+        alert("You have reached the maximum limit of 2 attempts for this test.");
+        return;
+      }
+
+      if (previousAttemptsCount === 1 && !existingAttempt) {
+        if (!confirm("Warning: This is your 2nd and LAST attempt for this test. Do you want to proceed?")) {
+          return;
+        }
+      }
+
       if (existingAttempt) {
-        console.log('Resuming existing attempt:', existingAttempt.id);
+        console.log('Resuming existing attempt:', existingAttempt.id, existingAttempt);
         setActiveAttempt(existingAttempt);
       } else {
         console.log('Starting new test session');
         setActiveAttempt(null);
       }
 
-      // Pre-check if questions exist
-      const testQuestions = test.questionIds
-        .map(id => data.questions.find(q => q.id === id))
-        .filter((q): q is Question => q !== undefined);
-
-      if (testQuestions.length === 0) {
-        alert('This test has no questions loaded. Please contact the administrator.');
+      // Lazy load questions before starting
+      try {
+        await data.loadQuestionsForTest(test);
+      } catch (err) {
+        console.error("Failed to load questions", err);
+        alert("Failed to load test questions. Please check your connection.");
         return;
+      }
+
+      // Re-confirm attempt state just in case (optional, but good for debugging)
+      if (existingAttempt) {
+        console.log('Proceeding with attempt:', existingAttempt.id);
       }
 
       setActiveTest(test);
@@ -157,6 +186,40 @@ function App() {
       alert(`Failed to create test: ${errorMsg}`);
     }
   }, [data, navigateTo]);
+
+  // Auto-logout on inactivity
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const INACTIVITY_LIMIT = 30 * 60 * 1000; // 30 minutes
+    let timeoutId: ReturnType<typeof setTimeout>;
+
+    const resetTimer = () => {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        handleLogout();
+        alert('You have been logged out due to inactivity to protect your account.');
+      }, INACTIVITY_LIMIT);
+    };
+
+    // Events to track activity
+    const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
+
+    // Set initial timer
+    resetTimer();
+
+    // Add listeners
+    events.forEach(event => {
+      document.addEventListener(event, resetTimer);
+    });
+
+    return () => {
+      clearTimeout(timeoutId);
+      events.forEach(event => {
+        document.removeEventListener(event, resetTimer);
+      });
+    };
+  }, [isAuthenticated, handleLogout]);
 
   // Initial redirect based on auth (run once)
   // Initial redirect based on auth (run once)

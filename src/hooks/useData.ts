@@ -105,7 +105,7 @@ const DEMO_TOPICS: Topic[] = [
   { id: 'grav-freefall', name: 'Free Fall', chapterId: 'gravitation' },
 ];
 
-export function useData(isAdmin: boolean = false) {
+export function useData(userId?: string, isAdmin: boolean = false) {
   const [subjects] = useState<Subject[]>(DEMO_SUBJECTS);
   const [chapters] = useState<Chapter[]>(DEMO_CHAPTERS);
   const [topics] = useState<Topic[]>(DEMO_TOPICS);
@@ -113,13 +113,13 @@ export function useData(isAdmin: boolean = false) {
   const [tests, setTests] = useState<Test[]>([]);
   const [attempts, setAttempts] = useState<TestAttempt[]>([]);
   const [loading, setLoading] = useState(true);
-  const [initLoad, setInitLoad] = useState({ tests: false, questions: false, attempts: false });
+  const [initLoad, setInitLoad] = useState({ tests: false, attempts: false });
 
   const questionCache = useQuestionCache();
 
   // Unified loading state
   useEffect(() => {
-    if (initLoad.tests && initLoad.questions && initLoad.attempts) {
+    if (initLoad.tests && initLoad.attempts) {
       setLoading(false);
     }
   }, [initLoad]);
@@ -142,38 +142,28 @@ export function useData(isAdmin: boolean = false) {
       console.log('Loaded', loadedTests.length, 'tests from Firebase');
     });
 
-    // Real-time listener for questions - CRITICAL for test taking!
-    const questionsQuery = query(collection(firestore, 'questions'));
-    const unsubscribeQuestions = onSnapshot(questionsQuery, (snapshot) => {
-      const loadedQuestions = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        createdAt: doc.data().createdAt?.toDate() || new Date(),
-      })) as unknown as Question[];
-      setQuestions(loadedQuestions);
-      setInitLoad(prev => ({ ...prev, questions: true }));
-      console.log('Loaded', loadedQuestions.length, 'questions from Firebase');
-    });
-
     return () => {
       unsubscribeTests();
-      unsubscribeQuestions();
     };
   }, []);
 
   // Fetch attempts - for admin load ALL, for students load only their own
   useEffect(() => {
     const firestore = db;
-    const currentUser = auth?.currentUser;
 
-    if (!firestore || !currentUser) return;
+    // Logic: If admin, we don't need userId. If not admin, we NEED userId.
+    if (!firestore) return;
+    if (!isAdmin && !userId) {
+      // If student but no userId yet, don't fetch attempts yet
+      return;
+    }
 
     // Admin sees ALL attempts, students see only their own
     const attemptsQuery = isAdmin
       ? query(collection(firestore, 'attempts'))
       : query(
         collection(firestore, 'attempts'),
-        where('studentId', '==', currentUser.uid)
+        where('studentId', '==', userId)
       );
 
     const unsubscribeAttempts = onSnapshot(attemptsQuery, (snapshot) => {
@@ -194,7 +184,7 @@ export function useData(isAdmin: boolean = false) {
     });
 
     return () => unsubscribeAttempts();
-  }, [auth?.currentUser?.uid, isAdmin]);
+  }, [userId, isAdmin]);
 
   // Handle case where no user is logged in - we shouldn't wait for attempts
   useEffect(() => {
@@ -202,6 +192,70 @@ export function useData(isAdmin: boolean = false) {
       setInitLoad(prev => ({ ...prev, attempts: true }));
     }
   }, [auth?.currentUser]);
+
+  // Lazy load questions for a specific test
+  const loadQuestionsForTest = useCallback(async (test: Test) => {
+    if (!db) return;
+    if (!test.questionIds || test.questionIds.length === 0) return;
+
+    console.log(`Lazy loading ${test.questionIds.length} questions for test ${test.id}...`);
+
+    try {
+      // 1. Check which questions are already loaded
+      const loadedIds = new Set(questions.map(q => q.id));
+      const missingIds = test.questionIds.filter(id => !loadedIds.has(id));
+
+      if (missingIds.length === 0) {
+        console.log('All questions already loaded.');
+        return;
+      }
+
+      // 2. Fetch missing questions
+      const newQuestions: Question[] = [];
+      const fetchPromises = missingIds.map(id => getDoc(doc(db!, 'questions', id)));
+      const snapshots = await Promise.all(fetchPromises);
+
+      snapshots.forEach(snap => {
+        if (snap.exists()) {
+          newQuestions.push({
+            id: snap.id,
+            ...snap.data(),
+            createdAt: snap.data().createdAt?.toDate() || new Date(),
+          } as unknown as Question);
+        }
+      });
+
+      console.log(`Fetched ${newQuestions.length} new questions.`);
+
+      if (newQuestions.length > 0) {
+        setQuestions(prev => [...prev, ...newQuestions]);
+      }
+
+    } catch (error) {
+      console.error("Error lazy loading questions:", error);
+    }
+  }, [questions]);
+
+  // Manual load all questions (for Admin)
+  const loadAllQuestions = useCallback(async () => {
+    if (!db) return;
+    console.log("Admin: Loading ALL questions...");
+
+    try {
+      const qQuery = query(collection(db, 'questions'));
+      const snapshot = await getDocs(qQuery);
+      const allQuestions = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        createdAt: doc.data().createdAt?.toDate() || new Date(),
+      })) as unknown as Question[];
+
+      setQuestions(allQuestions);
+      console.log(`Admin loaded ${allQuestions.length} questions.`);
+    } catch (e) {
+      console.error("Error loading all questions:", e);
+    }
+  }, []);
 
   // Question operations with caching
   const addQuestions = useCallback(async (newQuestions: Question[]): Promise<Question[]> => {
@@ -668,6 +722,8 @@ export function useData(isAdmin: boolean = false) {
     tests,
     attempts,
     loading,
+    loadQuestionsForTest,
+    loadAllQuestions,
     addQuestions,
     getQuestionsByFilter,
     createTest,

@@ -13,6 +13,7 @@ export interface User {
   batch?: string; // e.g., "Morning Batch", "Batch A"
   isLeaderboardVisible?: boolean; // Privacy control for leaderboard
   createdAt: Date;
+  sessionId?: string; // For concurrent login detection
 }
 
 export type ClassLevel = 9 | 10 | 11 | 12;

@@ -26,7 +26,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     });
 
     useEffect(() => {
-        // Just updating localStorage, NOT the root element
+        const root = window.document.documentElement;
+        root.classList.remove('light', 'dark');
+        root.classList.add(theme);
         localStorage.setItem('theme', theme);
     }, [theme]);
 
