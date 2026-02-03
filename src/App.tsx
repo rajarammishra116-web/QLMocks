@@ -164,6 +164,19 @@ function App() {
   const handleViewResult = useCallback(async (attemptId: string) => {
     const attempt = await data.getAttemptById(attemptId);
     if (attempt) {
+      // Find the test associated with this attempt
+      const test = data.tests.find(t => t.id === attempt.testId);
+
+      if (test) {
+        // Ensure questions are loaded for this test so detailed analysis works
+        try {
+          await data.loadQuestionsForTest(test);
+        } catch (err) {
+          console.error("Failed to load questions for result view", err);
+          // We continue anyway, as the result page can still show basic stats without questions
+        }
+      }
+
       setActiveAttempt(attempt);
       navigateTo('result');
     }
