@@ -1,19 +1,31 @@
-import { useState, useCallback, useEffect } from 'react';
-import { Login } from '@/sections/Login';
-import { StudentDashboard } from '@/sections/StudentDashboard';
-import { TestList } from '@/sections/TestList';
-import { TakeTest } from '@/sections/TakeTest';
-import { ResultPage } from '@/sections/ResultPage';
-import { AdminDashboard } from '@/sections/AdminDashboard';
-import { UploadQuestions } from '@/sections/UploadQuestions';
-import { CreateTest } from '@/sections/CreateTest';
-import { AllResults } from '@/sections/AllResults';
+import { useState, useCallback, useEffect, lazy, Suspense } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useData } from '@/hooks/useData';
 import { useLanguage } from '@/hooks/useLanguage';
 import { useTheme } from '@/contexts/ThemeContext';
 import { PageTransition } from '@/components/PageTransition';
 import type { TestAttempt, Test, Question, ClassLevel } from '@/types';
+
+// Lazy load components for code splitting
+const Login = lazy(() => import('@/sections/Login').then(module => ({ default: module.Login })));
+const StudentDashboard = lazy(() => import('@/sections/StudentDashboard').then(module => ({ default: module.StudentDashboard })));
+const TestList = lazy(() => import('@/sections/TestList').then(module => ({ default: module.TestList })));
+const TakeTest = lazy(() => import('@/sections/TakeTest').then(module => ({ default: module.TakeTest })));
+const ResultPage = lazy(() => import('@/sections/ResultPage').then(module => ({ default: module.ResultPage })));
+const AdminDashboard = lazy(() => import('@/sections/AdminDashboard').then(module => ({ default: module.AdminDashboard })));
+const UploadQuestions = lazy(() => import('@/sections/UploadQuestions').then(module => ({ default: module.UploadQuestions })));
+const CreateTest = lazy(() => import('@/sections/CreateTest').then(module => ({ default: module.CreateTest })));
+const AllResults = lazy(() => import('@/sections/AllResults').then(module => ({ default: module.AllResults })));
+
+// Loading Component
+const LoadingScreen = () => (
+  <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+    <div className="text-center">
+      <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+      <p className="text-gray-500 dark:text-gray-400 font-medium animate-pulse">Loading...</p>
+    </div>
+  </div>
+);
 
 // View types for navigation
 type View =
@@ -482,7 +494,9 @@ function App() {
 
     return (
       <PageTransition key={currentView} className="w-full">
-        {content}
+        <Suspense fallback={<LoadingScreen />}>
+          {content}
+        </Suspense>
       </PageTransition>
     );
   };
