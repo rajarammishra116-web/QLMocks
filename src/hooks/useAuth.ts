@@ -308,6 +308,44 @@ export function useAuth() {
     }
   }, [user]);
 
+  // Auto-logout logic
+  useEffect(() => {
+    if (!user) return;
+
+    let timeoutId: ReturnType<typeof setTimeout>;
+    const INACTIVITY_LIMIT = 30 * 60 * 1000; // 30 minutes
+
+    const resetTimer = () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        console.log('Auto-logging out due to inactivity');
+        logout();
+      }, INACTIVITY_LIMIT);
+    };
+
+    // Events to track activity
+    const events = ['mousedown', 'keydown', 'scroll', 'touchstart', 'mousemove'];
+
+    // Throttle the event listeners to avoid performance hit
+    let lastReset = 0;
+    const throttledReset = () => {
+      const now = Date.now();
+      if (now - lastReset > 1000) { // Only reset once per second max
+        resetTimer();
+        lastReset = now;
+      }
+    };
+
+    resetTimer(); // Start timer
+
+    events.forEach(event => document.addEventListener(event, throttledReset));
+
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      events.forEach(event => document.removeEventListener(event, throttledReset));
+    };
+  }, [user, logout]);
+
   const deleteAccount = useCallback(async (password: string): Promise<boolean> => {
     const authInstance = auth;
     const firestore = db;
@@ -318,7 +356,7 @@ export function useAuth() {
       const credential = EmailAuthProvider.credential(user.email, password);
       await reauthenticateWithCredential(firebaseUser, credential);
 
-      // 2. Delete all attempts by this user (cascade delete)
+      // 2. Delete all attempts by this user (cascade delete) with batch chunking
       const { collection, query, where, getDocs, writeBatch } = await import('firebase/firestore');
       const attemptsQuery = query(
         collection(firestore, 'attempts'),
@@ -327,11 +365,22 @@ export function useAuth() {
       const attemptsSnapshot = await getDocs(attemptsQuery);
 
       if (attemptsSnapshot.docs.length > 0) {
-        const batch = writeBatch(firestore);
-        attemptsSnapshot.docs.forEach(docSnap => {
-          batch.delete(docSnap.ref);
-        });
-        await batch.commit();
+        // Firestore batch limit is 500
+        const BATCH_SIZE = 450;
+        const chunks = [];
+
+        for (let i = 0; i < attemptsSnapshot.docs.length; i += BATCH_SIZE) {
+          chunks.push(attemptsSnapshot.docs.slice(i, i + BATCH_SIZE));
+        }
+
+        for (const chunk of chunks) {
+          const batch = writeBatch(firestore);
+          chunk.forEach(docSnap => {
+            batch.delete(docSnap.ref);
+          });
+          await batch.commit();
+        }
+
         console.log(`Deleted ${attemptsSnapshot.docs.length} attempts for user ${user.id}`);
       }
 
@@ -349,7 +398,7 @@ export function useAuth() {
       if (error.code === 'auth/wrong-password') {
         alert('Incorrect password.');
       } else {
-        alert('Failed to delete account. Please try again.');
+        alert(`Failed to delete account: ${error.message}`);
       }
       return false;
     }

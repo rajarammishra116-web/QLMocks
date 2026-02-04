@@ -15,8 +15,6 @@ import {
   FileText
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
 import type { TestAttempt, Test, Question, Analytics } from '@/types';
 
 interface ResultPageProps {
@@ -86,51 +84,62 @@ export function ResultPage({
     return `${mins}m ${secs}s`;
   };
 
+  // Add print styles
+  const printStyles = `
+    @media print {
+      body * {
+        visibility: hidden;
+      }
+      #result-container, #result-container * {
+        visibility: visible;
+      }
+      #result-container {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+      }
+      header, button, .no-print {
+        display: none !important;
+      }
+      .card {
+        break-inside: avoid;
+        page-break-inside: avoid;
+        border: 1px solid #ddd;
+        box-shadow: none;
+      }
+      /* Ensure text is black for printing */
+      * {
+        color: black !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      /* Hide background colors if needed or force them */
+      .bg-green-100 { background-color: #dcfce7 !important; }
+      .bg-red-100 { background-color: #fee2e2 !important; }
+    }
+  `;
+
   const downloadPDF = async () => {
-    if (!resultRef.current) return;
+    // Inject styles
+    const styleSheet = document.createElement("style");
+    styleSheet.innerText = printStyles;
+    document.head.appendChild(styleSheet);
 
-    // 1. Save current state
+    // Ensure analysis is shown
     const wasAnalysisHidden = !showAnalysis;
+    if (wasAnalysisHidden) {
+      setShowAnalysis(true);
+      // Small delay to allow render
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
 
-    try {
-      // 2. Expand if hidden to capture full report
-      if (wasAnalysisHidden) {
-        setShowAnalysis(true);
-        // Wait for React Render + Layout
-        await new Promise(resolve => setTimeout(resolve, 500));
-      }
+    window.print();
 
-      const input = resultRef.current;
-      const canvas = await html2canvas(input, {
-        scale: 1.5,
-        useCORS: true,
-        logging: false,
-        backgroundColor: '#ffffff',
-        windowHeight: input.scrollHeight + 100, // Ensure full height
-        height: input.scrollHeight + 50
-      });
-
-      const imgData = canvas.toDataURL('image/jpeg', 0.6);
-
-      // Calculate PDF dimensions to fit width to A4 but allow dynamic height
-      const a4WidthMm = 210;
-      const pdfHeightMm = (canvas.height * a4WidthMm) / canvas.width;
-
-      // Create PDF with custom height to fit all content on one long "page"
-      // This is often better for digital reports than arbitrary page breaks
-      const pdf = new jsPDF('p', 'mm', [a4WidthMm, pdfHeightMm]);
-
-      pdf.addImage(imgData, 'JPEG', 0, 0, a4WidthMm, pdfHeightMm);
-      pdf.save(`${test.name}_Result.pdf`);
-
-    } catch (error) {
-      console.error("PDF generation failed", error);
-      alert("Failed to generate PDF. Please try again.");
-    } finally {
-      // 3. Restore state if it was hidden
-      if (wasAnalysisHidden) {
-        setShowAnalysis(false);
-      }
+    // Clean up
+    document.head.removeChild(styleSheet);
+    if (wasAnalysisHidden) {
+      setShowAnalysis(false);
     }
   };
 
@@ -171,7 +180,7 @@ export function ResultPage({
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8" ref={resultRef}>
+      <main id="result-container" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8" ref={resultRef}>
         {/* Score Overview */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
           <Card className="bg-gradient-to-br from-blue-600 to-indigo-600 text-white">
