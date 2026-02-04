@@ -722,10 +722,11 @@ export function useData(userId?: string, isAdmin: boolean = false) {
       // Simple fetch all users
       // In a real large-scale app, we might want to paginate this too, 
       // but "200 students" is small enough to fetch once.
-      const q = query(collection(db, 'users'), orderBy('createdAt', 'desc'));
+      // Simplify query to avoid index requirements
+      const q = query(collection(db, 'users'));
       const snapshot = await getDocs(q);
 
-      return snapshot.docs.map(doc => {
+      const users = snapshot.docs.map(doc => {
         const data = doc.data();
         return {
           id: doc.id,
@@ -737,6 +738,9 @@ export function useData(userId?: string, isAdmin: boolean = false) {
           lastLoginAt: data.lastLoginAt?.toDate(),
         } as User;
       });
+
+      // Sort client-side
+      return users.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
     } catch (error) {
       console.error("Error fetching users:", error);
       throw error;

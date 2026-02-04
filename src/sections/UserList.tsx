@@ -90,12 +90,12 @@ export function UserList({ onFetchUsers }: UserListProps) {
                         <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
                         <Input
                             placeholder="Search by name or email..."
-                            className="pl-9"
+                            className="pl-9 w-full"
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                         />
                     </div>
-                    <div className="flex gap-2">
+                    <div className="grid grid-cols-2 gap-2 md:flex">
                         <Select value={filterClass} onValueChange={setFilterClass}>
                             <SelectTrigger className="w-[130px]">
                                 <SelectValue placeholder="Class" />
