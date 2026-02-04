@@ -1,5 +1,7 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, lazy, Suspense } from 'react';
 import { motion } from 'framer-motion';
+// ... imports ...
+import { UserList } from './UserList';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -55,6 +57,7 @@ interface AdminDashboardProps {
   onDeleteTest: (id: string) => void;
   onCleanupOrphanedQuestions: () => Promise<number>;
   onCleanupOldAttempts: (days: number) => Promise<number>;
+  onFetchUsers: () => Promise<User[]>;
   getSubjectName: (id: string) => string;
   t: (key: string) => string;
 }
@@ -84,8 +87,10 @@ export function AdminDashboard({
   onViewResults,
   onLogout,
   onDeleteTest,
+  onDeleteTest,
   onCleanupOrphanedQuestions,
   onCleanupOldAttempts,
+  onFetchUsers,
   getSubjectName,
   t,
 }: AdminDashboardProps) {
@@ -224,6 +229,7 @@ export function AdminDashboard({
           <TabsList className="grid w-full grid-cols-2 mb-6">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="tests">Tests</TabsTrigger>
+            <TabsTrigger value="users">Users</TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview" className="space-y-6">
@@ -402,43 +408,7 @@ export function AdminDashboard({
                 </Card>
               </motion.div>
 
-              <motion.div variants={item}>
-                <Card className="hover:shadow-md transition-shadow bg-white dark:bg-gray-800 dark:border-gray-700">
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">
-                      Storage Management
-                    </CardTitle>
-                    <Trash2 className="w-4 h-4 text-red-500" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold mb-1 dark:text-white">Old Data Cleanup</div>
-                    <p className="text-xs text-muted-foreground mb-4">
-                      Delete attempts older than 30 days to free up storage.
-                    </p>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full border-red-200 text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/20"
-                      onClick={async () => {
-                        if (confirm('Are you sure you want to delete all attempts older than 30 days? This cannot be undone.')) {
-                          setIsCleaningAttempts(true);
-                          try {
-                            const count = await onCleanupOldAttempts(30);
-                            alert(`Cleaned up ${count} old attempts`);
-                          } catch (e) {
-                            alert('Failed to cleanup attempts');
-                            console.error(e);
-                          }
-                          setIsCleaningAttempts(false);
-                        }
-                      }}
-                      disabled={isCleaningAttempts}
-                    >
-                      {isCleaningAttempts ? 'Cleaning...' : 'Delete Old Attempts'}
-                    </Button>
-                  </CardContent>
-                </Card>
-              </motion.div>
+
 
               <motion.div variants={item}>
                 <Card className="hover:shadow-md transition-shadow bg-white dark:bg-gray-800 dark:border-gray-700">
@@ -623,6 +593,10 @@ export function AdminDashboard({
                 </div>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="users">
+            <UserList onFetchUsers={onFetchUsers} />
           </TabsContent>
         </Tabs>
       </main>

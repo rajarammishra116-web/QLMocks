@@ -191,8 +191,12 @@ export function useAuth() {
         if (!userDoc.exists()) {
           // User authenticated in Auth but no data in Firestore (deleted account?)
           console.error("User authenticated but no Firestore profile found.");
-          await signOut(authInstance); // Force logout
-          alert("Account not found. It may have been deleted.");
+
+          // Fix: Delete the zombie auth user so they can register again fresh
+          await deleteUser(credential.user);
+          await signOut(authInstance);
+
+          alert("Your account was previously deleted. We have cleared your credentials. Please REGISTER again to create a fresh account.");
           return false;
         }
 
