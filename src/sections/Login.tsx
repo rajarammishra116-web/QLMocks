@@ -60,26 +60,34 @@ export function Login({ onLogin, onRegister, t, onForgotPassword }: LoginProps) 
     setError('');
     setSuccessMsg('');
 
-    if (forgotPasswordMode) {
-      if (onForgotPassword) {
-        const sent = await onForgotPassword(loginEmail);
-        if (sent) {
-          setSuccessMsg('Password reset email sent! Please check your inbox and spam/junk folder.');
-          setForgotPasswordMode(false);
-        } else {
-          setError('Failed to send reset email. Please try again.');
+    try {
+      if (forgotPasswordMode) {
+        if (onForgotPassword) {
+          const sent = await onForgotPassword(loginEmail);
+          if (sent) {
+            setSuccessMsg('Password reset email sent! Please check your inbox and spam/junk folder.');
+            setForgotPasswordMode(false);
+          } else {
+            setError('Failed to send reset email. Please try again.');
+          }
         }
+        return;
       }
+
+      const success = await onLogin(loginEmail, loginPassword);
+      if (!success) {
+        // If success is false, it means useAuth.login returned correctly but failed.
+        // It might have already alerted, but we can set a generic error here just in case.
+        // Note: useAuth.login already alerts, so we might just want to be sure UI is ready.
+        // But typically we don't overwrite the alert with a text error unless we change useAuth to not alert.
+        // For now, let's keep existing behavior but ensure loading stops.
+      }
+    } catch (err) {
+      console.error("Login critical error:", err);
+      setError("An unexpected error occurred. Please try again.");
+    } finally {
       setIsLoading(false);
-      return;
     }
-
-    const success = await onLogin(loginEmail, loginPassword);
-    if (!success) {
-      setError('Invalid email or password.');
-    }
-
-    setIsLoading(false);
   };
 
   const handleRegister = async (e: React.FormEvent) => {

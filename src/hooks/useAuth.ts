@@ -182,12 +182,24 @@ export function useAuth() {
     try {
       const credential = await signInWithEmailAndPassword(authInstance, email, password);
 
-      // Update session ID logic
+      // Check if user document exists in Firestore
       if (db && credential.user) {
+        const { getDoc, doc } = await import('firebase/firestore');
+        const userDocRef = doc(db, 'users', credential.user.uid);
+        const userDoc = await getDoc(userDocRef);
+
+        if (!userDoc.exists()) {
+          // User authenticated in Auth but no data in Firestore (deleted account?)
+          console.error("User authenticated but no Firestore profile found.");
+          await signOut(authInstance); // Force logout
+          alert("Account not found. It may have been deleted.");
+          return false;
+        }
+
+        // Proceed with session update
         const sessionId = crypto.randomUUID();
         localStorage.setItem('device_session_id', sessionId);
 
-        const userDocRef = doc(db, 'users', credential.user.uid);
         await updateDoc(userDocRef, {
           lastLoginAt: serverTimestamp(),
           sessionId,
@@ -391,6 +403,9 @@ export function useAuth() {
       // 4. Delete user from Auth
       await deleteUser(firebaseUser);
       alert('Account has been permanently deleted.');
+
+      // Force a hard reload to clear all in-memory state and reset to login
+      window.location.href = '/';
 
       return true;
     } catch (error: any) {
