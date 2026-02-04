@@ -15,6 +15,13 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Upload,
   Plus,
   FileText,
@@ -87,6 +94,7 @@ export function AdminDashboard({
   const [testToDelete, setTestToDelete] = useState<string | null>(null);
   const [isCleaningUp, setIsCleaningUp] = useState(false);
   const [isCleaningAttempts, setIsCleaningAttempts] = useState(false);
+  const [cleanupDays, setCleanupDays] = useState('30');
 
   const stats = useMemo(() => {
     // Filter attempts to include only the FIRST attempt per student per test
@@ -427,6 +435,57 @@ export function AdminDashboard({
                       disabled={isCleaningAttempts}
                     >
                       {isCleaningAttempts ? 'Cleaning...' : 'Delete Old Attempts'}
+                    </Button>
+                  </CardContent>
+                </Card>
+              </motion.div>
+
+              <motion.div variants={item}>
+                <Card className="hover:shadow-md transition-shadow bg-white dark:bg-gray-800 dark:border-gray-700">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium text-muted-foreground">
+                      Storage Management
+                    </CardTitle>
+                    <Trash2 className="w-4 h-4 text-red-500" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold mb-1 dark:text-white">Old Data Cleanup</div>
+                    <div className="flex items-center gap-2 mb-4">
+                      <p className="text-xs text-muted-foreground whitespace-nowrap">
+                        Delete attempts older than:
+                      </p>
+                      <Select value={cleanupDays} onValueChange={setCleanupDays}>
+                        <SelectTrigger className="h-7 w-[100px] text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="7">7 Days</SelectItem>
+                          <SelectItem value="15">15 Days</SelectItem>
+                          <SelectItem value="30">30 Days</SelectItem>
+                          <SelectItem value="60">60 Days</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full border-red-200 text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/20"
+                      onClick={async () => {
+                        const days = parseInt(cleanupDays);
+                        if (confirm(`Are you sure you want to delete all attempts older than ${days} days? This cannot be undone.`)) {
+                          setIsCleaningAttempts(true);
+                          try {
+                            const count = await onCleanupOldAttempts(days);
+                            alert(`Cleaned up ${count} old attempts`);
+                          } catch (e) {
+                            alert('Failed to cleanup attempts');
+                            console.error(e);
+                          }
+                          setIsCleaningAttempts(false);
+                        }
+                      }}
+                      disabled={isCleaningAttempts}
+                    >
                     </Button>
                   </CardContent>
                 </Card>

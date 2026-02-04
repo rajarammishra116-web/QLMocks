@@ -11,7 +11,8 @@ import {
   onSnapshot,
   writeBatch,
   getDoc,
-  updateDoc
+  updateDoc,
+  limit
 } from 'firebase/firestore';
 import { db, auth } from '@/lib/firebase';
 import { useQuestionCache } from './useQuestionCache';
@@ -158,9 +159,9 @@ export function useData(userId?: string, isAdmin: boolean = false) {
       return;
     }
 
-    // Admin sees ALL attempts, students see only their own
+    // Admin sees ALL attempts (limited to last 100 to prevent crash), students see only their own
     const attemptsQuery = isAdmin
-      ? query(collection(firestore, 'attempts'))
+      ? query(collection(firestore, 'attempts'), orderBy('submittedAt', 'desc'), limit(100))
       : query(
         collection(firestore, 'attempts'),
         where('studentId', '==', userId)
