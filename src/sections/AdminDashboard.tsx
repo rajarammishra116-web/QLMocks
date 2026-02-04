@@ -1,4 +1,4 @@
-import { useState, useMemo, lazy, Suspense } from 'react';
+import { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 // ... imports ...
 import { UserList } from './UserList';
@@ -86,7 +86,6 @@ export function AdminDashboard({
   onCreateTest,
   onViewResults,
   onLogout,
-  onDeleteTest,
   onDeleteTest,
   onCleanupOrphanedQuestions,
   onCleanupOldAttempts,

@@ -725,12 +725,18 @@ export function useData(userId?: string, isAdmin: boolean = false) {
       const q = query(collection(db, 'users'), orderBy('createdAt', 'desc'));
       const snapshot = await getDocs(q);
 
-      return snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        createdAt: doc.data().createdAt?.toDate() || new Date(),
-        lastLoginAt: doc.data().lastLoginAt?.toDate(),
-      })) as User[];
+      return snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          name: data.name || 'Unknown',
+          email: data.email || '',
+          role: data.role || 'student',
+          ...data,
+          createdAt: data.createdAt?.toDate() || new Date(),
+          lastLoginAt: data.lastLoginAt?.toDate(),
+        } as User;
+      });
     } catch (error) {
       console.error("Error fetching users:", error);
       throw error;

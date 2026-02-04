@@ -400,6 +400,7 @@ function App() {
               onDeleteTest={data.deleteTest}
               onCleanupOrphanedQuestions={data.cleanupOrphanedQuestions}
               onCleanupOldAttempts={data.cleanupOldAttempts}
+              onFetchUsers={data.fetchUsers}
               getSubjectName={data.getSubjectName}
               t={t}
             />
@@ -469,6 +470,7 @@ function App() {
               onDeleteTest={data.deleteTest}
               onCleanupOrphanedQuestions={data.cleanupOrphanedQuestions}
               onCleanupOldAttempts={data.cleanupOldAttempts}
+              onFetchUsers={data.fetchUsers}
               getSubjectName={data.getSubjectName}
               t={t}
             />
