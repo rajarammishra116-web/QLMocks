@@ -733,6 +733,7 @@ export function useData(userId?: string, isAdmin: boolean = false) {
           name: data.name || 'Unknown',
           email: data.email || '',
           role: data.role || 'student',
+          class: data.class || data.classLevel, // Handle both field names
           ...data,
           createdAt: data.createdAt?.toDate() || new Date(),
           lastLoginAt: data.lastLoginAt?.toDate(),

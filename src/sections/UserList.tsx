@@ -131,11 +131,13 @@ export function UserList({ onFetchUsers }: UserListProps) {
                 ) : (
                     <>
                         <div className="rounded-md border dark:border-gray-700 overflow-hidden">
-                            <div className="bg-slate-50 dark:bg-gray-900/50 border-b dark:border-gray-700 p-3 grid grid-cols-12 gap-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                            {/* Desktop Header */}
+                            <div className="hidden md:grid bg-slate-50 dark:bg-gray-900/50 border-b dark:border-gray-700 p-3 grid-cols-12 gap-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                                <div className="col-span-1 text-center">#</div>
                                 <div className="col-span-4">User Details</div>
                                 <div className="col-span-4">Email</div>
                                 <div className="col-span-2 text-center">Class & Board</div>
-                                <div className="col-span-2 text-right">Joined</div>
+                                <div className="col-span-1 text-right">Joined</div>
                             </div>
                             <div className="divide-y dark:divide-gray-700">
                                 {filteredUsers.length === 0 ? (
@@ -143,35 +145,49 @@ export function UserList({ onFetchUsers }: UserListProps) {
                                         No users found matching your filters.
                                     </div>
                                 ) : (
-                                    filteredUsers.map((user) => (
-                                        <div key={user.id} className="p-3 grid grid-cols-12 gap-4 items-center hover:bg-slate-50 dark:hover:bg-gray-800/50 transition-colors">
-                                            <div className="col-span-4 flex items-center gap-3">
-                                                <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-700 dark:text-indigo-400 font-bold text-xs uppercase">
+                                    filteredUsers.map((user, index) => (
+                                        <div key={user.id} className="p-4 md:p-3 flex flex-col md:grid md:grid-cols-12 gap-3 md:gap-4 items-start md:items-center hover:bg-slate-50 dark:hover:bg-gray-800/50 transition-colors">
+                                            {/* Serial Number */}
+                                            <div className="flex md:block items-center justify-between w-full md:w-auto md:col-span-1 md:text-center">
+                                                <span className="md:hidden text-xs font-medium text-muted-foreground">#</span>
+                                                <span className="text-sm font-medium text-gray-500">{index + 1}</span>
+                                            </div>
+
+                                            {/* User Details */}
+                                            <div className="w-full md:col-span-4 flex items-center gap-3">
+                                                <div className="w-10 h-10 md:w-8 md:h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-700 dark:text-indigo-400 font-bold text-sm md:text-xs uppercase shrink-0">
                                                     {user.name.charAt(0)}
                                                 </div>
-                                                <div>
-                                                    <p className="font-medium text-sm text-gray-900 dark:text-white truncate">{user.name}</p>
+                                                <div className="min-w-0">
+                                                    <p className="font-medium text-base md:text-sm text-gray-900 dark:text-white truncate">{user.name}</p>
                                                     <p className="text-xs text-muted-foreground capitalize">{user.role}</p>
                                                 </div>
                                             </div>
-                                            <div className="col-span-4 flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
-                                                <Mail className="w-3 h-3 text-muted-foreground" />
+
+                                            {/* Email */}
+                                            <div className="w-full md:col-span-4 flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+                                                <Mail className="w-4 h-4 md:w-3 md:h-3 text-muted-foreground shrink-0" />
                                                 <span className="truncate">{user.email}</span>
                                             </div>
-                                            <div className="col-span-2 flex justify-center">
+
+                                            {/* Class & Board */}
+                                            <div className="w-full md:col-span-2 flex md:justify-center">
                                                 {user.role === 'student' ? (
-                                                    <div className="flex flex-col items-center gap-1">
-                                                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
-                                                            Class {user.class}
+                                                    <div className="flex flex-row md:flex-col items-center gap-2 md:gap-1">
+                                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
+                                                            Class {user.class || 'N/A'}
                                                         </span>
-                                                        <span className="text-[10px] text-muted-foreground">{user.board}</span>
+                                                        <span className="text-xs text-muted-foreground">{user.board || 'N/A'}</span>
                                                     </div>
                                                 ) : (
                                                     <span className="text-xs text-muted-foreground">—</span>
                                                 )}
                                             </div>
-                                            <div className="col-span-2 text-right text-xs text-muted-foreground">
-                                                {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'N/A'}
+
+                                            {/* Joined Date */}
+                                            <div className="w-full md:col-span-1 md:text-right flex md:block justify-between items-center text-xs text-muted-foreground">
+                                                <span className="md:hidden">Joined:</span>
+                                                <span>{user.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'N/A'}</span>
                                             </div>
                                         </div>
                                     ))
