@@ -160,13 +160,19 @@ export function useData(userId?: string, isAdmin: boolean = false) {
       return;
     }
 
-    // Admin sees ALL attempts (limited to last 100 to prevent crash), students see only their own
-    const attemptsQuery = isAdmin
-      ? query(collection(firestore, 'attempts'), orderBy('submittedAt', 'desc'), limit(100))
-      : query(
-        collection(firestore, 'attempts'),
-        where('studentId', '==', userId)
-      );
+    // Admin should NOT use real-time listeners for all attempts (Quota Killer)
+    // Student uses real-time listener for their own attempts (Crucial and low-vol)
+    if (isAdmin) {
+      // For Admin, we don't use onSnapshot to save quota.
+      // We will fetch on-demand or use a more restricted query.
+      setInitLoad(prev => ({ ...prev, attempts: true }));
+      return;
+    }
+
+    const attemptsQuery = query(
+      collection(firestore, 'attempts'),
+      where('studentId', '==', userId)
+    );
 
     const unsubscribeAttempts = onSnapshot(attemptsQuery, (snapshot) => {
       const loadedAttempts = snapshot.docs.map(doc => ({
@@ -178,10 +184,9 @@ export function useData(userId?: string, isAdmin: boolean = false) {
       })) as TestAttempt[];
       setAttempts(loadedAttempts);
       setInitLoad(prev => ({ ...prev, attempts: true }));
-      console.log('Loaded', loadedAttempts.length, 'attempts for', isAdmin ? 'admin' : 'student');
+      console.log('Loaded', loadedAttempts.length, 'attempts for student');
     }, (error) => {
-      console.error("Error fetching attempts (likely missing index):", error);
-      // Even on error, we mark as loaded so app doesn't hang
+      console.error("Error fetching student attempts:", error);
       setInitLoad(prev => ({ ...prev, attempts: true }));
     });
 
@@ -584,6 +589,29 @@ export function useData(userId?: string, isAdmin: boolean = false) {
     return attempts.filter(a => a.studentId === studentId);
   }, [attempts]);
 
+  const refreshAdminAttempts = useCallback(async () => {
+    if (!db || !isAdmin) return;
+    console.log("Admin: Fetching latest 100 attempts manually...");
+
+    try {
+      const q = query(collection(db, 'attempts'), orderBy('submittedAt', 'desc'), limit(100));
+      const snapshot = await getDocs(q);
+      const loadedAttempts = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        startedAt: doc.data().startedAt?.toDate() || new Date(),
+        submittedAt: doc.data().submittedAt?.toDate() || new Date(),
+        lastUpdated: doc.data().lastUpdated?.toDate() || new Date(),
+      })) as TestAttempt[];
+
+      setAttempts(loadedAttempts);
+      return loadedAttempts;
+    } catch (e) {
+      console.error("Failed to fetch attempts manually:", e);
+      throw e;
+    }
+  }, [isAdmin]);
+
   const getAttemptById = useCallback(async (attemptId: string) => {
     // First check local state
     const local = attempts.find(a => a.id === attemptId);
@@ -771,6 +799,7 @@ export function useData(userId?: string, isAdmin: boolean = false) {
     submitAttempt,
     getAttemptsByStudent,
     getAttemptById,
+    refreshAdminAttempts,
     calculateAnalytics,
     getSubjectName,
     getChapterName,

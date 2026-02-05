@@ -338,9 +338,11 @@ export function useAuth() {
     if (!authInstance || !firestore || !firebaseUser || !user) return false;
 
     try {
-      // 1. Re-authenticate user (required for sensitive operations)
-      const credential = EmailAuthProvider.credential(user.email, password);
+      // 1. Re-authenticate user (CRITICAL for deleteUser)
+      if (!firebaseUser.email) throw new Error("User email not found for re-authentication.");
+      const credential = EmailAuthProvider.credential(firebaseUser.email, password);
       await reauthenticateWithCredential(firebaseUser, credential);
+      console.log('Re-authenticated successfully');
 
       // 2. Delete all attempts by this user (cascade delete) with batch chunking
       const { collection, query, where, getDocs, writeBatch } = await import('firebase/firestore');
@@ -351,43 +353,44 @@ export function useAuth() {
       const attemptsSnapshot = await getDocs(attemptsQuery);
 
       if (attemptsSnapshot.docs.length > 0) {
-        // Firestore batch limit is 500
         const BATCH_SIZE = 450;
         const chunks = [];
-
         for (let i = 0; i < attemptsSnapshot.docs.length; i += BATCH_SIZE) {
           chunks.push(attemptsSnapshot.docs.slice(i, i + BATCH_SIZE));
         }
-
         for (const chunk of chunks) {
           const batch = writeBatch(firestore);
-          chunk.forEach(docSnap => {
-            batch.delete(docSnap.ref);
-          });
+          chunk.forEach(docSnap => batch.delete(docSnap.ref));
           await batch.commit();
         }
-
-        console.log(`Deleted ${attemptsSnapshot.docs.length} attempts for user ${user.id}`);
+        console.log(`Deleted ${attemptsSnapshot.docs.length} attempts`);
       }
 
-      // 3. Delete user document
+      // 3. Delete user document from Firestore (Profile)
       const userDocRef = doc(firestore, 'users', user.id);
       await deleteDoc(userDocRef);
+      console.log('Firestore profile deleted');
 
-      // 4. Delete user from Auth
-      await deleteUser(firebaseUser);
-      alert('Account has been permanently deleted.');
+      // 4. Delete user FROM FIREBASE AUTH (The most sensitive part)
+      try {
+        await deleteUser(firebaseUser);
+        console.log('Firebase Auth record deleted');
+      } catch (authErr: any) {
+        console.error('Auth deletion failed:', authErr);
+        if (authErr.code === 'auth/requires-recent-login') {
+          throw new Error("Security Timeout: Please logout and login again before deleting your account.");
+        }
+        throw authErr;
+      }
 
-      // Force a hard reload to clear all in-memory state and reset to login
-      window.location.href = '/';
-
+      alert('SUCCESS: Your account and data have been permanently removed.');
       return true;
     } catch (error: any) {
-      console.error('Account deletion error:', error);
+      console.error('Deletion Flow Error:', error);
       if (error.code === 'auth/wrong-password') {
-        alert('Incorrect password.');
+        alert('Incorrect password. Profile not deleted.');
       } else {
-        alert(`Failed to delete account: ${error.message}`);
+        alert(`Deletion Failed: ${error.message}`);
       }
       return false;
     }

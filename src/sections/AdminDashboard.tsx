@@ -37,6 +37,7 @@ import {
   TrendingUp,
   TrendingDown,
   Activity,
+  RefreshCw,
   Sun,
   Moon
 } from 'lucide-react';
@@ -59,6 +60,7 @@ interface AdminDashboardProps {
   onCleanupOldAttempts: (days: number) => Promise<number>;
   onFetchUsers: () => Promise<User[]>;
   getSubjectName: (id: string) => string;
+  refreshAttempts?: () => Promise<any>;
   t: (key: string) => string;
 }
 
@@ -91,6 +93,7 @@ export function AdminDashboard({
   onCleanupOldAttempts,
   onFetchUsers,
   getSubjectName,
+  refreshAttempts,
   t,
 }: AdminDashboardProps) {
   const { theme, toggleTheme } = useTheme();
@@ -207,6 +210,20 @@ export function AdminDashboard({
             </div>
             <div className="flex items-center gap-2">
               <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  if (refreshAttempts) {
+                    await refreshAttempts();
+                    alert("Latest results fetched successfully.");
+                  }
+                }}
+                className="hidden sm:flex"
+              >
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Refresh
+              </Button>
+              <Button
                 variant="ghost"
                 size="icon"
                 onClick={toggleTheme}
@@ -214,7 +231,7 @@ export function AdminDashboard({
               >
                 {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
               </Button>
-              <Button variant="outline" onClick={onLogout}>
+              <Button variant="outline" size="sm" onClick={onLogout}>
                 <LogOut className="w-4 h-4 mr-2" />
                 {t('nav.logout')}
               </Button>

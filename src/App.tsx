@@ -417,6 +417,7 @@ function App() {
               onCleanupOldAttempts={data.cleanupOldAttempts}
               onFetchUsers={data.fetchUsers}
               getSubjectName={data.getSubjectName}
+              refreshAttempts={data.refreshAdminAttempts}
               t={t}
             />
           );
@@ -486,6 +487,7 @@ function App() {
               onCleanupOldAttempts={data.cleanupOldAttempts}
               onFetchUsers={data.fetchUsers}
               getSubjectName={data.getSubjectName}
+              refreshAttempts={data.refreshAdminAttempts}
               t={t}
             />
           ) : (

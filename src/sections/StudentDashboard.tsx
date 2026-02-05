@@ -85,6 +85,7 @@ export function StudentDashboard({
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passError, setPassError] = useState('');
   const [passSuccess, setPassSuccess] = useState('');
+  const [deleteConfirmPassword, setDeleteConfirmPassword] = useState('');
 
   const stats = useMemo(() => {
     if (attempts.length === 0) return null;
@@ -378,8 +379,8 @@ export function StudentDashboard({
                         <Input
                           id="delete-confirm"
                           type="password"
-                          value={newPassword}
-                          onChange={(e) => setNewPassword(e.target.value)}
+                          value={deleteConfirmPassword}
+                          onChange={(e) => setDeleteConfirmPassword(e.target.value)}
                           placeholder="Enter your password"
                         />
                       </div>
@@ -387,9 +388,17 @@ export function StudentDashboard({
                         variant="destructive"
                         className="w-full"
                         onClick={async () => {
-                          const success = await deleteAccount(newPassword);
+                          if (!deleteConfirmPassword) {
+                            alert("Please enter your password to confirm.");
+                            return;
+                          }
+                          const success = await deleteAccount(deleteConfirmPassword);
                           if (success) {
-                            onLogout();
+                            await onLogout();
+                            // Final safety check: force refresh to root
+                            window.location.href = "/";
+                          } else {
+                            alert("Account deletion failed. Please check your password and try again.");
                           }
                         }}
                       >
