@@ -51,6 +51,7 @@ function App() {
 
   // Registration race condition fix
   const [isRegistrationInProgress, setIsRegistrationInProgress] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   // Handle browser back button
   useEffect(() => {
@@ -58,7 +59,7 @@ function App() {
       if (event.state?.view) {
         setCurrentView(event.state.view);
       } else {
-        if (isAuthenticated) {
+        if (isAuthenticated && !isLoggingOut) {
           setCurrentView(isAdmin ? 'admin-dashboard' : 'student-dashboard');
         } else {
           setCurrentView('login');
@@ -68,14 +69,14 @@ function App() {
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [isAuthenticated, isAdmin]);
+  }, [isAuthenticated, isAdmin, isLoggingOut]);
 
   // Trigger admin data load
   useEffect(() => {
-    if (isAuthenticated && isAdmin) {
+    if (isAuthenticated && isAdmin && !isLoggingOut) {
       data.loadAllQuestions();
     }
-  }, [isAuthenticated, isAdmin, data.loadAllQuestions]);
+  }, [isAuthenticated, isAdmin, data.loadAllQuestions, isLoggingOut]);
 
   // Enhanced navigation that pushes history
   const navigateTo = useCallback((view: View) => {
@@ -84,12 +85,26 @@ function App() {
   }, []);
 
   const handleLogout = useCallback(async () => {
-    // Fix: Await logout to preventing race condition
-    await logout();
-    navigateTo('login');
-    setActiveTest(null);
-    setActiveAttempt(null);
-    localStorage.removeItem('examtrack_auth');
+    try {
+      setIsLoggingOut(true);
+      // Move to login view immediately to give feedback
+      navigateTo('login');
+      setActiveTest(null);
+      setActiveAttempt(null);
+      localStorage.removeItem('examtrack_auth'); // Legacy cleanup
+      localStorage.removeItem('device_session_id');
+
+      // Await actual firebase logout
+      await logout();
+
+      // Force hard reload to clear all in-memory state
+      // This is the most robust way to ensure no "bounce back" or state artifacts
+      window.location.href = "/";
+    } catch (error) {
+      console.error("Logout failed", error);
+      // Fallback force reload even if firebase fails
+      window.location.href = "/";
+    }
   }, [logout, navigateTo]);
 
   const handleLogin = useCallback(async (email: string, password: string) => {
@@ -105,16 +120,15 @@ function App() {
     classLevel?: number,
     board?: string
   ) => {
-    // Fix: Prevent auto-redirect during registration
+    // Flag prevents switching to dashboard when Firebase auto-logs in after creation
     setIsRegistrationInProgress(true);
     try {
       const result = await register(name, email, password, role, classLevel, board);
       if (!result.success) {
         setIsRegistrationInProgress(false);
       } else {
-        // Keep flag true for a bit to allow success screen to be seen
-        // It will be reset if they click "Proceed to Login" (which changes view)
-        // or effectively when they actually login.
+        // Validation: Verify we stay on login screen to show success message
+        // The flag remains true until user navigates away or logs in manually
         setTimeout(() => setIsRegistrationInProgress(false), 5000);
       }
       return result;
@@ -205,9 +219,10 @@ function App() {
 
   // Auto-logout on inactivity
   useEffect(() => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated || isRegistrationInProgress) return;
 
     const INACTIVITY_LIMIT = 30 * 60 * 1000; // 30 minutes
+
     let timeoutId: ReturnType<typeof setTimeout>;
     let lastActivityTime = Date.now();
 
@@ -222,6 +237,7 @@ function App() {
     };
 
     const handleActivity = () => {
+      // Throttle to once per second
       const now = Date.now();
       if (now - lastActivityTime > 1000) {
         lastActivityTime = now;
@@ -244,11 +260,18 @@ function App() {
         document.removeEventListener(event, handleActivity);
       });
     };
-  }, [isAuthenticated, handleLogout]);
+  }, [isAuthenticated, handleLogout, isRegistrationInProgress]);
 
-  // Initial redirect based on auth (run once)
+  // Reset isLoggingOut when auth state clears
   useEffect(() => {
-    if (isRegistrationInProgress) return;
+    if (!isAuthenticated) {
+      setIsLoggingOut(false);
+    }
+  }, [isAuthenticated]);
+
+  // Initial redirect based on auth (run once or when auth changes)
+  useEffect(() => {
+    if (isRegistrationInProgress || isLoggingOut) return;
 
     if (currentView === 'login' && isAuthenticated && user) {
       const nextView = user.role === 'admin' ? 'admin-dashboard' : 'student-dashboard';
@@ -262,7 +285,7 @@ function App() {
         setCurrentView('admin-dashboard');
       }
     }
-  }, [isAuthenticated, user, currentView, isRegistrationInProgress]);
+  }, [isAuthenticated, user, currentView, isRegistrationInProgress, isLoggingOut]);
 
   // Loading state
   if (authLoading || (isAuthenticated && data.loading)) {
@@ -279,7 +302,10 @@ function App() {
   // Render current view
   const renderView = () => {
     let content;
-    if (!isAuthenticated) {
+    // CRITICAL FIX: Keep Login mounted if registration is in progress, even if firebase momentarily logs in
+    const showLogin = !isAuthenticated || (isRegistrationInProgress && isAuthenticated);
+
+    if (showLogin) {
       content = <Login onLogin={handleLogin} onRegister={handleRegister} onForgotPassword={resetPassword} t={t} />;
     } else {
       switch (currentView) {

@@ -91,11 +91,16 @@ export function TakeTest({
   useEffect(() => {
     if (!existingAttempt && !attemptIdRef.current) {
       console.log('Initializing new attempt...');
-      onStartAttempt(test.id).then(id => {
-        console.log('New attempt created:', id);
-        setAttemptId(id);
-        attemptIdRef.current = id;
-      });
+      onStartAttempt(test.id)
+        .then(id => {
+          console.log('New attempt created:', id);
+          setAttemptId(id);
+          attemptIdRef.current = id;
+        })
+        .catch(err => {
+          console.error("Failed to start exam attempt:", err);
+          alert("Critical Error: Failed to initialize exam session. Please check your internet connection and reload the page.");
+        });
     } else if (existingAttempt && existingAttempt.id !== attemptIdRef.current) {
       // Prop update handling
       console.log('New existingAttempt prop received:', existingAttempt.id);
@@ -415,6 +420,9 @@ export function TakeTest({
     const currentAttemptId = attemptIdRef.current;
     if (!currentAttemptId || isSubmitting) {
       console.error('Cannot submit: no attemptId or already submitting');
+      if (!currentAttemptId) {
+        alert("Critial Error: Exam initialization failed (Missing Attempt ID). Please try refreshing the page or checking your connection.");
+      }
       return;
     }
 
@@ -488,22 +496,27 @@ export function TakeTest({
     };
 
     // Update Firestore
-    await onFinishAttempt(currentAttemptId, finalAttemptData);
+    try {
+      await onFinishAttempt(currentAttemptId, finalAttemptData);
 
-    // Clear local storage
-    localStorage.removeItem(`exam_state_${test.id}_${user.id}`);
+      // Clear local storage
+      localStorage.removeItem(`exam_state_${test.id}_${user.id}`);
 
-    // Pass complete object back
-    onComplete({
-      id: currentAttemptId,
-      testId: test.id,
-      studentId: user.id,
-      studentName: user.name,
-      startedAt: existingAttempt?.startedAt || new Date(),
-      submittedAt: new Date(),
-      ...finalAttemptData
-    } as TestAttempt);
-
+      // Pass complete object back
+      onComplete({
+        id: currentAttemptId,
+        testId: test.id,
+        studentId: user.id,
+        studentName: user.name,
+        startedAt: existingAttempt?.startedAt || new Date(),
+        submittedAt: new Date(),
+        ...finalAttemptData
+      } as TestAttempt);
+    } catch (error: any) {
+      console.error('Submission failed:', error);
+      alert(`Failed to submit exam: ${error.message || 'Unknown error'}. Please check your internet connection and try again.`);
+      setIsSubmitting(false);
+    }
   }, [isSubmitting, questions, test, user, onFinishAttempt, onComplete, existingAttempt, warningCount]);
 
   const getOptionLabel = (option: 'A' | 'B' | 'C' | 'D') => {
