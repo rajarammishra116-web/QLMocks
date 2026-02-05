@@ -329,43 +329,8 @@ export function useAuth() {
     }
   }, [user]);
 
-  // Auto-logout logic
-  useEffect(() => {
-    if (!user) return;
-
-    let timeoutId: ReturnType<typeof setTimeout>;
-    const INACTIVITY_LIMIT = 30 * 60 * 1000; // 30 minutes
-
-    const resetTimer = () => {
-      if (timeoutId) clearTimeout(timeoutId);
-      timeoutId = setTimeout(() => {
-        console.log('Auto-logging out due to inactivity');
-        logout();
-      }, INACTIVITY_LIMIT);
-    };
-
-    // Events to track activity
-    const events = ['mousedown', 'keydown', 'scroll', 'touchstart', 'mousemove'];
-
-    // Throttle the event listeners to avoid performance hit
-    let lastReset = 0;
-    const throttledReset = () => {
-      const now = Date.now();
-      if (now - lastReset > 1000) { // Only reset once per second max
-        resetTimer();
-        lastReset = now;
-      }
-    };
-
-    resetTimer(); // Start timer
-
-    events.forEach(event => document.addEventListener(event, throttledReset));
-
-    return () => {
-      if (timeoutId) clearTimeout(timeoutId);
-      events.forEach(event => document.removeEventListener(event, throttledReset));
-    };
-  }, [user, logout]);
+  // Auto-logout logic removed from here and consolidated in App.tsx
+  // to ensure consistent behavior and single source of truth.
 
   const deleteAccount = useCallback(async (password: string): Promise<boolean> => {
     const authInstance = auth;

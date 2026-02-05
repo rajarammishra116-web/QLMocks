@@ -49,15 +49,15 @@ function App() {
   const [activeTest, setActiveTest] = useState<Test | null>(null);
   const [activeAttempt, setActiveAttempt] = useState<TestAttempt | null>(null);
 
+  // Registration race condition fix
+  const [isRegistrationInProgress, setIsRegistrationInProgress] = useState(false);
+
   // Handle browser back button
   useEffect(() => {
     const handlePopState = (event: PopStateEvent) => {
       if (event.state?.view) {
         setCurrentView(event.state.view);
-        // Restore active test/attempt if needed (simplified for now)
-        // ideally state should contain all context
       } else {
-        // Default fallbacks based on auth
         if (isAuthenticated) {
           setCurrentView(isAdmin ? 'admin-dashboard' : 'student-dashboard');
         } else {
@@ -68,14 +68,12 @@ function App() {
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
   }, [isAuthenticated, isAdmin]);
 
   // Trigger admin data load
   useEffect(() => {
     if (isAuthenticated && isAdmin) {
-      data.loadAllQuestions(); // Trigger background load of all questions
+      data.loadAllQuestions();
     }
   }, [isAuthenticated, isAdmin, data.loadAllQuestions]);
 
@@ -85,9 +83,17 @@ function App() {
     window.history.pushState({ view }, '', `#${view}`);
   }, []);
 
+  const handleLogout = useCallback(async () => {
+    // Fix: Await logout to preventing race condition
+    await logout();
+    navigateTo('login');
+    setActiveTest(null);
+    setActiveAttempt(null);
+    localStorage.removeItem('examtrack_auth');
+  }, [logout, navigateTo]);
+
   const handleLogin = useCallback(async (email: string, password: string) => {
     const success = await login(email, password);
-    // Navigation is handled by the useEffect watching isAuthenticated and user state
     return success;
   }, [login]);
 
@@ -99,33 +105,35 @@ function App() {
     classLevel?: number,
     board?: string
   ) => {
-    const result = await register(name, email, password, role, classLevel, board);
-    // Login component will handle displaying the error if result.success is false
-    return result;
+    // Fix: Prevent auto-redirect during registration
+    setIsRegistrationInProgress(true);
+    try {
+      const result = await register(name, email, password, role, classLevel, board);
+      if (!result.success) {
+        setIsRegistrationInProgress(false);
+      } else {
+        // Keep flag true for a bit to allow success screen to be seen
+        // It will be reset if they click "Proceed to Login" (which changes view)
+        // or effectively when they actually login.
+        setTimeout(() => setIsRegistrationInProgress(false), 5000);
+      }
+      return result;
+    } catch (e) {
+      setIsRegistrationInProgress(false);
+      throw e;
+    }
   }, [register]);
 
-  const handleLogout = useCallback(() => {
-    logout();
-    navigateTo('login');
-    setActiveTest(null);
-    setActiveAttempt(null);
-    // Clear legacy local storage if it exists to prevent future bugs
-    localStorage.removeItem('examtrack_auth');
-  }, [logout, navigateTo]);
-
-  // Test handlers
   const handleStartTest = useCallback(async (testId: string) => {
     console.log('=== START TEST ===');
     const test = data.getTestById(testId);
 
     if (test) {
-      // Check for existing in-progress attempt
       const existingAttempt = data.attempts.find(
         a => a.testId === testId &&
           (a.status === 'in-progress' || a.status === 'paused')
       );
 
-      // Check for total attempts count (completed + in-progress, excluding current if resuming)
       const previousAttemptsCount = data.attempts.filter(
         a => a.testId === testId && a.status === 'completed'
       ).length;
@@ -142,25 +150,17 @@ function App() {
       }
 
       if (existingAttempt) {
-        console.log('Resuming existing attempt:', existingAttempt.id, existingAttempt);
         setActiveAttempt(existingAttempt);
       } else {
-        console.log('Starting new test session');
         setActiveAttempt(null);
       }
 
-      // Lazy load questions before starting
       try {
         await data.loadQuestionsForTest(test);
       } catch (err) {
         console.error("Failed to load questions", err);
         alert("Failed to load test questions. Please check your connection.");
         return;
-      }
-
-      // Re-confirm attempt state just in case (optional, but good for debugging)
-      if (existingAttempt) {
-        console.log('Proceeding with attempt:', existingAttempt.id);
       }
 
       setActiveTest(test);
@@ -171,24 +171,17 @@ function App() {
     }
   }, [data, navigateTo]);
 
-
-
   const handleViewResult = useCallback(async (attemptId: string) => {
     const attempt = await data.getAttemptById(attemptId);
     if (attempt) {
-      // Find the test associated with this attempt
       const test = data.tests.find(t => t.id === attempt.testId);
-
       if (test) {
-        // Ensure questions are loaded for this test so detailed analysis works
         try {
           await data.loadQuestionsForTest(test);
         } catch (err) {
           console.error("Failed to load questions for result view", err);
-          // We continue anyway, as the result page can still show basic stats without questions
         }
       }
-
       setActiveAttempt(attempt);
       navigateTo('result');
     }
@@ -201,9 +194,7 @@ function App() {
 
   const handleCreateTest = useCallback(async (testData: Omit<Test, 'id' | 'createdAt'>) => {
     try {
-      console.log('Creating test with data:', testData);
       await data.createTest(testData);
-      console.log('Test created successfully:', testData.name);
       navigateTo('admin-dashboard');
     } catch (error: any) {
       console.error('Failed to create test:', error);
@@ -218,53 +209,60 @@ function App() {
 
     const INACTIVITY_LIMIT = 30 * 60 * 1000; // 30 minutes
     let timeoutId: ReturnType<typeof setTimeout>;
+    let lastActivityTime = Date.now();
 
-    const resetTimer = () => {
-      clearTimeout(timeoutId);
-      timeoutId = setTimeout(() => {
-        handleLogout();
-        alert('You have been logged out due to inactivity to protect your account.');
-      }, INACTIVITY_LIMIT);
+    const logoutUser = () => {
+      handleLogout();
+      alert('You have been logged out due to inactivity to protect your account.');
     };
 
-    // Events to track activity
-    const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
+    const resetTimer = () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      timeoutId = setTimeout(logoutUser, INACTIVITY_LIMIT);
+    };
 
-    // Set initial timer
+    const handleActivity = () => {
+      const now = Date.now();
+      if (now - lastActivityTime > 1000) {
+        lastActivityTime = now;
+        resetTimer();
+      }
+    };
+
+    const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click'];
     resetTimer();
 
-    // Add listeners
     events.forEach(event => {
-      document.addEventListener(event, resetTimer);
+      const options = (event === 'scroll' || event === 'touchstart') ? { passive: true } : undefined;
+      document.addEventListener(event, handleActivity, options);
     });
 
     return () => {
-      clearTimeout(timeoutId);
+      if (timeoutId) clearTimeout(timeoutId);
       events.forEach(event => {
-        document.removeEventListener(event, resetTimer);
+        // @ts-ignore
+        document.removeEventListener(event, handleActivity);
       });
     };
   }, [isAuthenticated, handleLogout]);
 
   // Initial redirect based on auth (run once)
-  // Initial redirect based on auth (run once)
   useEffect(() => {
+    if (isRegistrationInProgress) return;
+
     if (currentView === 'login' && isAuthenticated && user) {
-      // Direct traffic based on role
       const nextView = user.role === 'admin' ? 'admin-dashboard' : 'student-dashboard';
       setCurrentView(nextView);
       window.history.replaceState({ view: nextView }, '', `#${nextView}`);
     } else if (isAuthenticated && user) {
-      // Security check: Prevent students from accessing admin dashboard
       if (currentView === 'admin-dashboard' && user.role !== 'admin') {
         setCurrentView('student-dashboard');
       }
-      // Security check: Prevent admins from being stuck on student dashboard (optional, but good for UX)
       if (currentView === 'student-dashboard' && user.role === 'admin') {
         setCurrentView('admin-dashboard');
       }
     }
-  }, [isAuthenticated, user, currentView]);
+  }, [isAuthenticated, user, currentView, isRegistrationInProgress]);
 
   // Loading state
   if (authLoading || (isAuthenticated && data.loading)) {
@@ -277,7 +275,6 @@ function App() {
       </div>
     );
   }
-
 
   // Render current view
   const renderView = () => {
@@ -295,7 +292,6 @@ function App() {
               onStartTest={() => navigateTo('test-list')}
               onResumeTest={handleStartTest}
               onViewResult={handleViewResult}
-
               onLogout={handleLogout}
               onUpdatePassword={updatePassword}
               getSubjectName={data.getSubjectName}
@@ -313,14 +309,7 @@ function App() {
                 user={user!}
                 tests={data.tests}
                 onStartTest={handleStartTest}
-                onBack={() => {
-                  window.history.back(); // Use browser back for "Back" buttons to keep history consistent?
-                  // Or navigateTo('student-dashboard')?
-                  // Using navigateTo mimics standard app behavior but might add to stack.
-                  // Let's use navigateTo for explicit "Back" buttons to be safe with state, 
-                  // but user REQUESTED back gesture support.
-                  navigateTo('student-dashboard');
-                }}
+                onBack={() => navigateTo('student-dashboard')}
                 getSubjectName={data.getSubjectName}
                 t={t}
                 language={language}
@@ -418,7 +407,6 @@ function App() {
           break;
 
         case 'create-test':
-          // Create sync wrapper for getQuestionsByFilter using already-loaded questions
           const syncGetQuestionsByFilter = (classLevel?: ClassLevel, subjectId?: string, chapterId?: string, topicId?: string) => {
             let filtered = data.questions;
             if (classLevel) filtered = filtered.filter((q: Question) => q.classLevel === classLevel);
@@ -482,7 +470,6 @@ function App() {
               onStartTest={() => navigateTo('test-list')}
               onResumeTest={handleStartTest}
               onViewResult={handleViewResult}
-
               onLogout={handleLogout}
               onUpdatePassword={updatePassword}
               getSubjectName={data.getSubjectName}
@@ -503,7 +490,6 @@ function App() {
     );
   };
 
-  // Language toggle button (shown when authenticated)
   const LanguageToggle = () => (
     <button
       onClick={toggleLanguage}
