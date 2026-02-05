@@ -153,6 +153,11 @@ export function useAuth() {
         sessionId,
       });
 
+      // Force sign out so the user has to login manually
+      // This ensures the "Registration Successful" UI in Login.tsx is shown
+      // instead of App.tsx engaging the auto-redirect to dashboard.
+      await signOut(authInstance);
+
       return { success: true };
     } catch (error: any) {
       console.error('Registration error:', error);
