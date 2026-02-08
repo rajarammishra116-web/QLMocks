@@ -12,6 +12,7 @@ import {
   writeBatch,
   getDoc,
   updateDoc,
+  deleteDoc,
   limit
 } from 'firebase/firestore';
 import { db, auth } from '@/lib/firebase';
@@ -776,6 +777,54 @@ export function useData(userId?: string, isAdmin: boolean = false) {
     }
   }, []);
 
+  // Delete a user and all their attempts (Admin only, Firestore data only)
+  // Note: This does NOT delete the Auth user (requires backend/admin SDK).
+  // However, useAuth's login check will catch the "Zombie" auth user and delete it upon next login attempt.
+  const deleteUser = useCallback(async (userId: string): Promise<boolean> => {
+    if (!db) return false;
+    try {
+      console.log(`Admin initiating deletion for user: ${userId}`);
+
+      // 1. Delete all attempts by this user
+      const attemptsQuery = query(
+        collection(db, 'attempts'),
+        where('studentId', '==', userId)
+      );
+      const attemptsSnapshot = await getDocs(attemptsQuery);
+      console.log(`Found ${attemptsSnapshot.docs.length} attempts to delete for user ${userId}`);
+
+      if (attemptsSnapshot.docs.length > 0) {
+        const BATCH_SIZE = 400;
+        const chunks = [];
+        for (let i = 0; i < attemptsSnapshot.docs.length; i += BATCH_SIZE) {
+          chunks.push(attemptsSnapshot.docs.slice(i, i + BATCH_SIZE));
+        }
+
+        for (const chunk of chunks) {
+          const batch = writeBatch(db);
+          chunk.forEach(docSnap => batch.delete(docSnap.ref));
+          await batch.commit();
+          console.log(`Deleted batch of ${chunk.length} attempts`);
+        }
+      }
+
+      // 2. Delete the user document
+      const userDocRef = doc(db, 'users', userId);
+      await deleteDoc(userDocRef);
+      console.log(`Deleted user document: ${userId}`);
+
+      // Optimistic update
+      // We don't have a local 'users' state to update here since fetchUsers returns new data,
+      // but if we did, we would update it. 
+      // The AdminDashboard calling this should re-fetch users.
+
+      return true;
+    } catch (error) {
+      console.error('Error deleting user:', error);
+      throw error;
+    }
+  }, []);
+
   return {
     subjects,
     chapters,
@@ -809,5 +858,6 @@ export function useData(userId?: string, isAdmin: boolean = false) {
     getTopicsByChapter,
     cleanupOldAttempts,
     fetchUsers,
+    deleteUser,
   };
 }

@@ -59,6 +59,7 @@ interface AdminDashboardProps {
   onCleanupOrphanedQuestions: () => Promise<number>;
   onCleanupOldAttempts: (days: number) => Promise<number>;
   onFetchUsers: () => Promise<User[]>;
+  onDeleteUser: (userId: string) => Promise<boolean>;
   getSubjectName: (id: string) => string;
   refreshAttempts?: () => Promise<any>;
   t: (key: string) => string;
@@ -92,6 +93,7 @@ export function AdminDashboard({
   onCleanupOrphanedQuestions,
   onCleanupOldAttempts,
   onFetchUsers,
+  onDeleteUser,
   getSubjectName,
   refreshAttempts,
   t,
@@ -102,6 +104,7 @@ export function AdminDashboard({
   const [isCleaningUp, setIsCleaningUp] = useState(false);
   const [isCleaningAttempts, setIsCleaningAttempts] = useState(false);
   const [cleanupDays, setCleanupDays] = useState('30');
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const stats = useMemo(() => {
     // Filter attempts to include only the FIRST attempt per student per test
@@ -212,16 +215,22 @@ export function AdminDashboard({
               <Button
                 variant="outline"
                 size="sm"
+                disabled={isRefreshing}
                 onClick={async () => {
                   if (refreshAttempts) {
-                    await refreshAttempts();
-                    alert("Latest results fetched successfully.");
+                    setIsRefreshing(true);
+                    try {
+                      await refreshAttempts();
+                      alert("Latest results fetched successfully.");
+                    } finally {
+                      setIsRefreshing(false);
+                    }
                   }
                 }}
                 className="hidden sm:flex"
               >
-                <RefreshCw className="w-4 h-4 mr-2" />
-                Refresh
+                <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+                {isRefreshing ? 'Refreshing...' : 'Refresh'}
               </Button>
               <Button
                 variant="ghost"
@@ -612,7 +621,7 @@ export function AdminDashboard({
           </TabsContent>
 
           <TabsContent value="users">
-            <UserList onFetchUsers={onFetchUsers} />
+            <UserList onFetchUsers={onFetchUsers} onDeleteUser={onDeleteUser} />
           </TabsContent>
         </Tabs>
       </main>

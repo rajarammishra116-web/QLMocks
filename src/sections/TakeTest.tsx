@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useProctoringMonitor } from '@/hooks/useProctoringMonitor';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -39,6 +40,7 @@ export function TakeTest({
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
 
   const [answers, setAnswers] = useState<Record<string, 'A' | 'B' | 'C' | 'D' | null>>(() => {
+    console.log('TakeTest INIT - existingAttempt:', existingAttempt?.id, 'answers:', existingAttempt?.answers ? Object.keys(existingAttempt.answers).length : 0, 'timeRemaining:', existingAttempt?.timeRemaining);
     return existingAttempt?.answers || {};
   });
 
@@ -63,6 +65,33 @@ export function TakeTest({
   const [showWarningDialog, setShowWarningDialog] = useState(false);
   const attemptIdRef = useRef<string | null>(existingAttempt?.id || null);
   const hasCheckedInterruption = useRef(false);
+
+  // Proctoring Monitor
+  const { requestFullscreen } = useProctoringMonitor({
+    enabled: isExamStarted && !showSubmitDialog && !showInstructions && !isSubmitting,
+    strictMode: true,
+    onViolation: (type, _count) => {
+      if (!isExamStarted || isSubmitting || showSubmitDialog) return;
+
+      console.warn(`Proctoring violation detected: ${type}`);
+
+      setWarningCount(prev => {
+        const newCount = prev + 1;
+
+        // Sync warning to Firestore immediately
+        const currentAttemptId = attemptIdRef.current;
+        if (currentAttemptId) {
+          onUpdateAttempt(currentAttemptId, { warningCount: newCount });
+        }
+
+        return newCount;
+      });
+
+      if (warningCount < 2) {
+        setShowWarningDialog(true);
+      }
+    }
+  });
 
   // Use ref to always have synchronous access to latest answers (critical for auto-submit)
   const answersRef = useRef<Record<string, 'A' | 'B' | 'C' | 'D' | null>>(existingAttempt?.answers || {});
@@ -400,6 +429,7 @@ export function TakeTest({
   const handleStartExam = () => {
     setShowInstructions(false);
     setIsExamStarted(true);
+    requestFullscreen();
   };
 
   const handlePause = async () => {
@@ -671,7 +701,7 @@ export function TakeTest({
               </CardHeader>
               <CardContent className="space-y-6">
                 {/* Question Text */}
-                <div className="text-lg font-medium text-gray-900 dark:text-gray-100 leading-relaxed">
+                <div className="text-lg font-medium text-gray-900 dark:text-gray-100 leading-relaxed preserve-whitespace">
                   {language === 'or' && currentQuestion.questionTextOR
                     ? currentQuestion.questionTextOR
                     : currentQuestion.questionTextEN}

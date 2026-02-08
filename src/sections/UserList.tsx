@@ -9,17 +9,19 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { Users, Search, RefreshCw, Mail } from 'lucide-react';
+import { Users, Search, RefreshCw, Mail, Trash2 } from 'lucide-react';
 import type { User } from '@/types';
 
 interface UserListProps {
     onFetchUsers: (filters?: any) => Promise<User[]>;
+    onDeleteUser: (userId: string) => Promise<boolean>;
 }
 
-export function UserList({ onFetchUsers }: UserListProps) {
+export function UserList({ onFetchUsers, onDeleteUser }: UserListProps) {
     const [users, setUsers] = useState<User[]>([]);
     const [hasLoaded, setHasLoaded] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
+    const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
 
     // Filters
     const [filterClass, setFilterClass] = useState<string>('all');
@@ -37,6 +39,32 @@ export function UserList({ onFetchUsers }: UserListProps) {
             alert("Failed to load users list.");
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    const handleDeleteUser = async (user: User) => {
+        if (user.role === 'admin') {
+            alert('Cannot delete admin users from the dashboard.');
+            return;
+        }
+
+        const confirmed = confirm(`Are you sure you want to delete ${user.name} (${user.email})? This will permanently remove their account and all test history.`);
+        if (!confirmed) return;
+
+        setDeletingUserId(user.id);
+        try {
+            const success = await onDeleteUser(user.id);
+            if (success) {
+                setUsers(prev => prev.filter(u => u.id !== user.id));
+                alert(`User ${user.name} has been deleted.`);
+            } else {
+                alert('Failed to delete user. Please try again.');
+            }
+        } catch (error) {
+            console.error('Delete user error:', error);
+            alert('An error occurred while deleting the user.');
+        } finally {
+            setDeletingUserId(null);
         }
     };
 
@@ -134,10 +162,11 @@ export function UserList({ onFetchUsers }: UserListProps) {
                             {/* Desktop Header */}
                             <div className="hidden md:grid bg-slate-50 dark:bg-gray-900/50 border-b dark:border-gray-700 p-3 grid-cols-12 gap-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">
                                 <div className="col-span-1 text-center">#</div>
-                                <div className="col-span-4">User Details</div>
-                                <div className="col-span-4">Email</div>
+                                <div className="col-span-3">User Details</div>
+                                <div className="col-span-3">Email</div>
                                 <div className="col-span-2 text-center">Class & Board</div>
                                 <div className="col-span-1 text-right">Joined</div>
+                                <div className="col-span-2 text-center">Actions</div>
                             </div>
                             <div className="divide-y dark:divide-gray-700">
                                 {filteredUsers.length === 0 ? (
@@ -154,7 +183,7 @@ export function UserList({ onFetchUsers }: UserListProps) {
                                             </div>
 
                                             {/* User Details */}
-                                            <div className="w-full md:col-span-4 flex items-center gap-3">
+                                            <div className="w-full md:col-span-3 flex items-center gap-3">
                                                 <div className="w-10 h-10 md:w-8 md:h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-700 dark:text-indigo-400 font-bold text-sm md:text-xs uppercase shrink-0">
                                                     {user.name.charAt(0)}
                                                 </div>
@@ -165,7 +194,7 @@ export function UserList({ onFetchUsers }: UserListProps) {
                                             </div>
 
                                             {/* Email */}
-                                            <div className="w-full md:col-span-4 flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+                                            <div className="w-full md:col-span-3 flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
                                                 <Mail className="w-4 h-4 md:w-3 md:h-3 text-muted-foreground shrink-0" />
                                                 <span className="truncate">{user.email}</span>
                                             </div>
@@ -188,6 +217,22 @@ export function UserList({ onFetchUsers }: UserListProps) {
                                             <div className="w-full md:col-span-1 md:text-right flex md:block justify-between items-center text-xs text-muted-foreground">
                                                 <span className="md:hidden">Joined:</span>
                                                 <span>{user.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'N/A'}</span>
+                                            </div>
+
+                                            {/* Delete Button */}
+                                            <div className="w-full md:col-span-2 flex justify-end md:justify-center">
+                                                {user.role !== 'admin' && (
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        disabled={deletingUserId === user.id}
+                                                        onClick={() => handleDeleteUser(user)}
+                                                        className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
+                                                    >
+                                                        <Trash2 className={`w-4 h-4 ${deletingUserId === user.id ? 'animate-pulse' : ''}`} />
+                                                        <span className="ml-1 md:hidden">Delete</span>
+                                                    </Button>
+                                                )}
                                             </div>
                                         </div>
                                     ))

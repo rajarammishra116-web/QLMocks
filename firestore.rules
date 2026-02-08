@@ -3,75 +3,96 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // Helper function to check if user is authenticated
+    // --- Global Deny All (Implicit, but good to be explicit for unmentioned paths) ---
+    // match /{document=**} {
+    //   allow read, write: if false;
+    // }
+    // (Defining explicit matches below covers this, but final catch-all is good practice if structure permits. 
+    // Standard Firestore behavior denies anything not matched.)
+
+    // --- Helper Functions ---
+
     function isAuthenticated() {
       return request.auth != null;
     }
     
-    // Helper function to check if user is admin
     function isAdmin() {
       return isAuthenticated() && 
              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
     
-    // Helper function to check if user owns the resource
     function isOwner(userId) {
       return isAuthenticated() && request.auth.uid == userId;
     }
-    
-    // Users collection
+
+    // --- Collections ---
+
+    // 1. Users Collection
     match /users/{userId} {
-      // Users can read their own profile, admins can read all
+      // Read: Owner can read own profile; Admin can read all
       allow read: if isOwner(userId) || isAdmin();
       
-      // Users can only update their own profile (excluding role field)
-      allow update: if isOwner(userId) && 
-                       request.resource.data.role == resource.data.role;
+      // Create: Only if Auth UID matches Document ID (Self-registration)
+      // AND Role is NOT 'admin' (Clients cannot make themselves admins)
+      allow create: if isOwner(userId) && 
+                       (!request.resource.data.keys().hasAny(['role']) || request.resource.data.role == 'student');
+
+      // Update: Owner can update BUT role is immutable
+      // Admin can update everything
+      allow update: if (isOwner(userId) && request.resource.data.role == resource.data.role) || isAdmin();
       
-      // Only authentication system creates user documents
-      allow create: if isOwner(userId);
-      
-      // Users cannot delete their profile (use admin or auth system)
-      allow delete: if false;
+      // Delete: Admin only (or false if we want soft-deletes only)
+      allow delete: if isAdmin(); // Changed from false to allow admin cleanup
     }
     
-    // Questions collection
+    // 2. Questions Collection
     match /questions/{questionId} {
-      // Anyone authenticated can read questions
+      // Read: Public for authenticated users
       allow read: if isAuthenticated();
       
-      // Only admins can create/update/delete questions
+      // Write: Admin only
       allow create, update, delete: if isAdmin();
     }
     
-    // Tests collection  
+    // 3. Tests Collection  
     match /tests/{testId} {
-      // Anyone authenticated can read tests
+      // Read: Public for authenticated users
       allow read: if isAuthenticated();
       
-      // Only admins can create/update/delete tests
+      // Write: Admin only
       allow create, update, delete: if isAdmin();
     }
     
-    // Test attempts collection
+    // 4. Test Attempts Collection
     match /attempts/{attemptId} {
-      // Students can read their own attempts, admins can read all
+      // Read: Owner or Admin
       allow read: if isAuthenticated() && 
                      (resource.data.studentId == request.auth.uid || isAdmin());
       
-      // Students can create their own attempts
+      // Create: Student creating their own attempt
       allow create: if isAuthenticated() && 
                        request.resource.data.studentId == request.auth.uid &&
-                       request.resource.data.submittedAt is timestamp;
+                       // Validate vital fields to prevent spoofing
+                       request.resource.data.keys().hasAll(['testId', 'startedAt']);
       
-      // Attempts are immutable after creation (no updates or deletes)
-      allow update, delete: if false;
+      // Update: Owner can update answers/status/timer BUT strictly NO ownership change
+      allow update: if isAuthenticated() && 
+                       resource.data.studentId == request.auth.uid && 
+                       request.resource.data.studentId == request.auth.uid; // ID immutable
+      
+      // Delete: Admin only
+      allow delete: if isAdmin();
     }
     
-    // System metadata (for quota tracking, etc.)
+    // 5. System/Metadata
     match /metadata/{document=**} {
       allow read: if isAdmin();
-      allow write: if false; // Only server-side operations
+      allow write: if false; // Server-side only via Cloud Functions/Admin SDK
+    }
+
+    // 6. Explicit Deny All for Unmatched
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

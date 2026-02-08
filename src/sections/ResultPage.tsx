@@ -108,19 +108,34 @@ export function ResultPage({
         border: 1px solid #ddd;
         box-shadow: none;
       }
-      /* Ensure text is black for printing */
-      * {
+      /* Force light mode for printing */
+      body, html, * {
+        background-color: white !important;
+        background: white !important;
         color: black !important;
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
       }
-      /* Hide background colors if needed or force them */
+      .dark, [class*="dark:"] {
+        background-color: white !important;
+        background: white !important;
+        color: black !important;
+      }
+      /* Preserve specific accent colors */
       .bg-green-100 { background-color: #dcfce7 !important; }
       .bg-red-100 { background-color: #fee2e2 !important; }
+      .bg-green-50 { background-color: #f0fdf4 !important; }
+      .bg-red-50 { background-color: #fef2f2 !important; }
     }
   `;
 
   const downloadPDF = async () => {
+    // Temporarily remove dark mode for printing
+    const wasDark = document.documentElement.classList.contains('dark');
+    if (wasDark) {
+      document.documentElement.classList.remove('dark');
+    }
+
     // Inject styles
     const styleSheet = document.createElement("style");
     styleSheet.innerText = printStyles;
@@ -140,6 +155,9 @@ export function ResultPage({
     document.head.removeChild(styleSheet);
     if (wasAnalysisHidden) {
       setShowAnalysis(false);
+    }
+    if (wasDark) {
+      document.documentElement.classList.add('dark');
     }
   };
 
@@ -444,7 +462,7 @@ export function ResultPage({
                           {index + 1}
                         </span>
                         <div className="flex-1">
-                          <p className="font-medium text-gray-900 dark:text-gray-100 mb-3">{getQuestionText()}</p>
+                          <p className="font-medium text-gray-900 dark:text-gray-100 mb-3 preserve-whitespace">{getQuestionText()}</p>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                             {(['A', 'B', 'C', 'D'] as const).map((optionKey) => {
                               const optionText = getOptionText(optionKey);

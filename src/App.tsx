@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, lazy, Suspense } from 'react';
 import { useAuth } from '@/hooks/useAuth';
+import { useInactivityTimer } from '@/hooks/useInactivityTimer';
 import { useData } from '@/hooks/useData';
 import { useLanguage } from '@/hooks/useLanguage';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -126,17 +127,19 @@ function App() {
       const result = await register(name, email, password, role, classLevel, board);
       if (!result.success) {
         setIsRegistrationInProgress(false);
-      } else {
-        // Validation: Verify we stay on login screen to show success message
-        // The flag remains true until user navigates away or logs in manually
-        setTimeout(() => setIsRegistrationInProgress(false), 5000);
       }
+      // Flag remains true on success - cleared only when user clicks "Proceed to Login"
       return result;
     } catch (e) {
       setIsRegistrationInProgress(false);
       throw e;
     }
   }, [register]);
+
+  // Callback for Login.tsx to clear registration flag when user dismisses success screen
+  const handleDismissRegistration = useCallback(() => {
+    setIsRegistrationInProgress(false);
+  }, []);
 
   const handleStartTest = useCallback(async (testId: string) => {
     console.log('=== START TEST ===');
@@ -218,49 +221,16 @@ function App() {
   }, [data, navigateTo]);
 
   // Auto-logout on inactivity
-  useEffect(() => {
-    if (!isAuthenticated || isRegistrationInProgress) return;
+  const handleInactivityTimeout = useCallback(() => {
+    handleLogout();
+    alert('You have been logged out due to inactivity to protect your account.');
+  }, [handleLogout]);
 
-    const INACTIVITY_LIMIT = 30 * 60 * 1000; // 30 minutes
-
-    let timeoutId: ReturnType<typeof setTimeout>;
-    let lastActivityTime = Date.now();
-
-    const logoutUser = () => {
-      handleLogout();
-      alert('You have been logged out due to inactivity to protect your account.');
-    };
-
-    const resetTimer = () => {
-      if (timeoutId) clearTimeout(timeoutId);
-      timeoutId = setTimeout(logoutUser, INACTIVITY_LIMIT);
-    };
-
-    const handleActivity = () => {
-      // Throttle to once per second
-      const now = Date.now();
-      if (now - lastActivityTime > 1000) {
-        lastActivityTime = now;
-        resetTimer();
-      }
-    };
-
-    const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click'];
-    resetTimer();
-
-    events.forEach(event => {
-      const options = (event === 'scroll' || event === 'touchstart') ? { passive: true } : undefined;
-      document.addEventListener(event, handleActivity, options);
-    });
-
-    return () => {
-      if (timeoutId) clearTimeout(timeoutId);
-      events.forEach(event => {
-        // @ts-ignore
-        document.removeEventListener(event, handleActivity);
-      });
-    };
-  }, [isAuthenticated, handleLogout, isRegistrationInProgress]);
+  useInactivityTimer(
+    30 * 60 * 1000, // 30 minutes
+    handleInactivityTimeout,
+    isAuthenticated && !isRegistrationInProgress
+  );
 
   // Reset isLoggingOut when auth state clears
   useEffect(() => {
@@ -306,7 +276,7 @@ function App() {
     const showLogin = !isAuthenticated || (isRegistrationInProgress && isAuthenticated);
 
     if (showLogin) {
-      content = <Login onLogin={handleLogin} onRegister={handleRegister} onForgotPassword={resetPassword} t={t} />;
+      content = <Login onLogin={handleLogin} onRegister={handleRegister} onDismissRegistration={handleDismissRegistration} onForgotPassword={resetPassword} t={t} />;
     } else {
       switch (currentView) {
         case 'student-dashboard':
@@ -416,6 +386,7 @@ function App() {
               onCleanupOrphanedQuestions={data.cleanupOrphanedQuestions}
               onCleanupOldAttempts={data.cleanupOldAttempts}
               onFetchUsers={data.fetchUsers}
+              onDeleteUser={data.deleteUser}
               getSubjectName={data.getSubjectName}
               refreshAttempts={data.refreshAdminAttempts}
               t={t}
@@ -486,6 +457,7 @@ function App() {
               onCleanupOrphanedQuestions={data.cleanupOrphanedQuestions}
               onCleanupOldAttempts={data.cleanupOldAttempts}
               onFetchUsers={data.fetchUsers}
+              onDeleteUser={data.deleteUser}
               getSubjectName={data.getSubjectName}
               refreshAttempts={data.refreshAdminAttempts}
               t={t}

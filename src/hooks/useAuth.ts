@@ -14,7 +14,6 @@ import {
   doc,
   setDoc,
   updateDoc,
-  deleteDoc,
   serverTimestamp,
   onSnapshot,
 } from 'firebase/firestore';
@@ -40,7 +39,15 @@ export function useAuth() {
       return;
     }
 
+    let unsubscribeSnapshot: (() => void) | null = null;
+
     const unsubscribe = onAuthStateChanged(authInstance, async (firebaseUser) => {
+      // Cleanup previous listener if exists (Fix for memory leak)
+      if (unsubscribeSnapshot) {
+        unsubscribeSnapshot();
+        unsubscribeSnapshot = null;
+      }
+
       if (firebaseUser) {
         // Fetch user profile from Firestore
         try {
@@ -50,7 +57,7 @@ export function useAuth() {
 
             // Set up real-time listener for session management
             // Set up real-time listener for session management
-            onSnapshot(userDocRef, async (docSnapshot: any) => {
+            unsubscribeSnapshot = onSnapshot(userDocRef, async (docSnapshot) => {
               if (docSnapshot.exists()) {
                 const userData = docSnapshot.data();
 
@@ -78,8 +85,10 @@ export function useAuth() {
                 console.error('User document not found for:', firebaseUser.uid);
                 await signOut(authInstance);
               }
-            }, (error: any) => {
+              setIsLoading(false);
+            }, (error) => {
               console.error('Snapshot error:', error);
+              setIsLoading(false);
             });
 
             // Cleanup snapshot listener when auth state changes or unmount (handled by useEffect closure?)
@@ -93,15 +102,21 @@ export function useAuth() {
           }
         } catch (error) {
           console.error('Error fetching user profile:', error);
+          setIsLoading(false);
         }
       } else {
         setUser(null);
         setFirebaseUser(null);
+        setIsLoading(false);
       }
-      setIsLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => {
+      if (unsubscribeSnapshot) {
+        unsubscribeSnapshot();
+      }
+      unsubscribe();
+    };
   }, []);
 
   const register = useCallback(async (
@@ -338,59 +353,67 @@ export function useAuth() {
     if (!authInstance || !firestore || !firebaseUser || !user) return false;
 
     try {
+      console.log('Initiating account deletion for:', user.id);
+
       // 1. Re-authenticate user (CRITICAL for deleteUser)
       if (!firebaseUser.email) throw new Error("User email not found for re-authentication.");
+
       const credential = EmailAuthProvider.credential(firebaseUser.email, password);
       await reauthenticateWithCredential(firebaseUser, credential);
       console.log('Re-authenticated successfully');
 
-      // 2. Delete all attempts by this user (cascade delete) with batch chunking
-      const { collection, query, where, getDocs, writeBatch } = await import('firebase/firestore');
+      // 2. Delete all attempts by this user (cascade delete)
+      // Import dynamically to avoid circular dependencies if any
+      const { collection, query, where, getDocs, writeBatch, doc, deleteDoc } = await import('firebase/firestore');
+
       const attemptsQuery = query(
         collection(firestore, 'attempts'),
         where('studentId', '==', user.id)
       );
       const attemptsSnapshot = await getDocs(attemptsQuery);
+      console.log(`Found ${attemptsSnapshot.docs.length} attempts to delete.`);
 
       if (attemptsSnapshot.docs.length > 0) {
-        const BATCH_SIZE = 450;
+        const BATCH_SIZE = 400; // Safe limit
         const chunks = [];
         for (let i = 0; i < attemptsSnapshot.docs.length; i += BATCH_SIZE) {
           chunks.push(attemptsSnapshot.docs.slice(i, i + BATCH_SIZE));
         }
+
         for (const chunk of chunks) {
           const batch = writeBatch(firestore);
           chunk.forEach(docSnap => batch.delete(docSnap.ref));
           await batch.commit();
+          console.log(`Deleted batch of ${chunk.length} attempts`);
         }
-        console.log(`Deleted ${attemptsSnapshot.docs.length} attempts`);
       }
 
-      // 3. Delete user document from Firestore (Profile)
+      // 3. Delete user document from Firestore
+      // Use deleteDoc directly for the specific user ID
       const userDocRef = doc(firestore, 'users', user.id);
       await deleteDoc(userDocRef);
       console.log('Firestore profile deleted');
 
-      // 4. Delete user FROM FIREBASE AUTH (The most sensitive part)
-      try {
-        await deleteUser(firebaseUser);
-        console.log('Firebase Auth record deleted');
-      } catch (authErr: any) {
-        console.error('Auth deletion failed:', authErr);
-        if (authErr.code === 'auth/requires-recent-login') {
-          throw new Error("Security Timeout: Please logout and login again before deleting your account.");
-        }
-        throw authErr;
-      }
+      // 4. Delete From Authentication
+      await deleteUser(firebaseUser);
+      console.log('Firebase Auth record deleted');
 
-      alert('SUCCESS: Your account and data have been permanently removed.');
+      alert('Your account and all associated data have been permanently deleted.');
+
+      // 5. Local Cleanup
+      localStorage.removeItem('device_session_id');
+      setUser(null);
+      setFirebaseUser(null);
+
       return true;
     } catch (error: any) {
       console.error('Deletion Flow Error:', error);
       if (error.code === 'auth/wrong-password') {
-        alert('Incorrect password. Profile not deleted.');
+        alert('Incorrect password. Account not deleted.');
+      } else if (error.code === 'auth/requires-recent-login') {
+        alert('Security Check: Please logout and login again, then try deleting your account immediately.');
       } else {
-        alert(`Deletion Failed: ${error.message}`);
+        alert(`Deletion Failed: ${error.message || 'Unknown error'}`);
       }
       return false;
     }

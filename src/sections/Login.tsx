@@ -13,11 +13,12 @@ import { validatePassword } from '@/lib/validation';
 interface LoginProps {
   onLogin: (email: string, password: string) => Promise<boolean>;
   onRegister: (name: string, email: string, password: string, role: UserRole, classLevel?: number, board?: string) => Promise<{ success: boolean; error?: string }>;
+  onDismissRegistration?: () => void;
   t: (key: string) => string;
   onForgotPassword?: (email: string) => Promise<boolean>;
 }
 
-export function Login({ onLogin, onRegister, t, onForgotPassword }: LoginProps) {
+export function Login({ onLogin, onRegister, onDismissRegistration, t, onForgotPassword }: LoginProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
@@ -143,6 +144,10 @@ export function Login({ onLogin, onRegister, t, onForgotPassword }: LoginProps) 
   };
 
   const handleProceedToLogin = () => {
+    // Notify App.tsx to clear registration-in-progress flag
+    if (onDismissRegistration) {
+      onDismissRegistration();
+    }
     setRegistrationSuccess(false);
     setActiveTab('login');
     setLoginEmail(createdCredentials.email);
@@ -321,7 +326,7 @@ export function Login({ onLogin, onRegister, t, onForgotPassword }: LoginProps) 
                   </div>
                   <h2 className="text-xl font-bold text-gray-900  mb-2">Registration Successful!</h2>
                   <p className="text-gray-600 text-sm mb-6">
-                    Thank you for joining QLMocks. Please verify the email sent to your inbox.
+                    Welcome to QLMocks! Please save your credentials below and proceed to login.
                   </p>
 
                   <div className="bg-gray-50 rounded-lg p-4 mb-6 text-left border border-gray-200">
