@@ -146,10 +146,10 @@ function App() {
     const test = data.getTestById(testId);
 
     if (test) {
-      const existingAttempt = data.attempts.find(
-        a => a.testId === testId &&
-          (a.status === 'in-progress' || a.status === 'paused')
-      );
+      const existingAttempt = data.attempts
+        .filter(a => a.testId === testId && (a.status === 'in-progress' || a.status === 'paused'))
+        .sort((a, b) => new Date(b.lastUpdated || b.startedAt || 0).getTime() - new Date(a.lastUpdated || a.startedAt || 0).getTime())
+      [0] || null;
 
       const previousAttemptsCount = data.attempts.filter(
         a => a.testId === testId && a.status === 'completed'
@@ -384,11 +384,14 @@ function App() {
               onLogout={handleLogout}
               onDeleteTest={data.deleteTest}
               onCleanupOrphanedQuestions={data.cleanupOrphanedQuestions}
+              onCleanupOrphanedAttempts={data.cleanupOrphanedAttempts}
               onCleanupOldAttempts={data.cleanupOldAttempts}
               onFetchUsers={data.fetchUsers}
               onDeleteUser={data.deleteUser}
               getSubjectName={data.getSubjectName}
               refreshAttempts={data.refreshAdminAttempts}
+              fetchMoreTests={data.fetchMoreTests}
+              hasMoreTests={data.hasMoreTests}
               t={t}
             />
           );
@@ -455,11 +458,14 @@ function App() {
               onLogout={handleLogout}
               onDeleteTest={data.deleteTest}
               onCleanupOrphanedQuestions={data.cleanupOrphanedQuestions}
+              onCleanupOrphanedAttempts={data.cleanupOrphanedAttempts}
               onCleanupOldAttempts={data.cleanupOldAttempts}
               onFetchUsers={data.fetchUsers}
               onDeleteUser={data.deleteUser}
               getSubjectName={data.getSubjectName}
               refreshAttempts={data.refreshAdminAttempts}
+              fetchMoreTests={data.fetchMoreTests}
+              hasMoreTests={data.hasMoreTests}
               t={t}
             />
           ) : (

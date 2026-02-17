@@ -125,7 +125,7 @@ export function StudentDashboard({
   const subjectPerformance = useMemo(() => {
     const subjectMap: Record<string, { total: number; count: number }> = {};
 
-    attempts.forEach(attempt => {
+    attempts.filter(a => a.status === 'completed').forEach(attempt => {
       const test = tests.find(t => t.id === attempt.testId);
       if (!test) return;
 
@@ -156,16 +156,25 @@ export function StudentDashboard({
   }, [attempts]);
 
   const interruptedTests = useMemo(() => {
-    const active = attempts.filter(a => a.status === 'in-progress' || a.status === 'paused');
-    // Deduplicate: Keep only the latest attempt per testId
-    const latestMap = new Map<string, TestAttempt>();
-    active.forEach(a => {
-      const existing = latestMap.get(a.testId);
-      if (!existing || new Date(a.lastUpdated || 0) > new Date(existing.lastUpdated || 0)) {
-        latestMap.set(a.testId, a);
+    // Group all attempts by testId to find the latest one
+    const latestAttemptsByTest = new Map<string, TestAttempt>();
+
+    attempts.forEach(a => {
+      const existing = latestAttemptsByTest.get(a.testId);
+      // Use lastUpdated, or fall back to startedAt -> createdAt (if available) -> 0
+      const currentTimestamp = new Date(a.lastUpdated || a.startedAt || 0).getTime();
+      const existingTimestamp = existing
+        ? new Date(existing.lastUpdated || existing.startedAt || 0).getTime()
+        : 0;
+
+      if (!existing || currentTimestamp > existingTimestamp) {
+        latestAttemptsByTest.set(a.testId, a);
       }
     });
-    return Array.from(latestMap.values());
+
+    // Return only those where the LATEST attempt is active
+    return Array.from(latestAttemptsByTest.values())
+      .filter(a => a.status === 'in-progress' || a.status === 'paused');
   }, [attempts]);
 
   const progressData = useMemo(() => {
@@ -191,7 +200,7 @@ export function StudentDashboard({
       { name: 'Incorrect', value: lastAttempt.incorrectCount || 0 },
       { name: 'Unanswered', value: lastAttempt.unattemptedCount || 0 },
     ];
-  }, [attempts, t]);
+  }, [attempts]);
 
   const getGrade = (percentage: number): string => {
     if (percentage >= 90) return 'A+';

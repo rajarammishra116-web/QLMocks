@@ -36,6 +36,7 @@ import {
   Trash2,
   TrendingUp,
   TrendingDown,
+  // pending viewn,
   Activity,
   RefreshCw,
   Sun,
@@ -57,11 +58,14 @@ interface AdminDashboardProps {
   onLogout: () => void;
   onDeleteTest: (id: string) => void;
   onCleanupOrphanedQuestions: () => Promise<number>;
+  onCleanupOrphanedAttempts: () => Promise<number>;
   onCleanupOldAttempts: (days: number) => Promise<number>;
   onFetchUsers: () => Promise<User[]>;
   onDeleteUser: (userId: string) => Promise<boolean>;
   getSubjectName: (id: string) => string;
   refreshAttempts?: () => Promise<any>;
+  fetchMoreTests?: () => void;
+  hasMoreTests?: boolean;
   t: (key: string) => string;
 }
 
@@ -91,11 +95,14 @@ export function AdminDashboard({
   onLogout,
   onDeleteTest,
   onCleanupOrphanedQuestions,
+  onCleanupOrphanedAttempts,
   onCleanupOldAttempts,
   onFetchUsers,
   onDeleteUser,
   getSubjectName,
   refreshAttempts,
+  fetchMoreTests,
+  hasMoreTests,
   t,
 }: AdminDashboardProps) {
   const { theme, toggleTheme } = useTheme();
@@ -122,23 +129,28 @@ export function AdminDashboard({
       }
     });
 
-    const uniqueAttempts = Array.from(attemptsMap.values());
-
-    // ... existing stats logic but using uniqueAttempts ...
+    // Calculate stats based on ALL attempts
     const totalQuestions = questions.length;
     const totalTests = tests.length;
-    const totalAttempts = uniqueAttempts.length; // Counting unique first attempts
-    const avgScore = uniqueAttempts.length > 0
-      ? uniqueAttempts.reduce((sum, a) => sum + (a.percentage || 0), 0) / uniqueAttempts.length
+    const totalAttempts = attempts.length;
+
+    // Identify attempts associated with tests that are not currently loaded (due to pagination or deletion)
+    const validTestIds = new Set(tests.map(t => t.id));
+    const ghostAttempts = attempts.filter(a => !validTestIds.has(a.testId)).length;
+
+
+    const completedForAvg = attempts.filter(a => a.status === 'completed');
+    const avgScore = completedForAvg.length > 0
+      ? completedForAvg.reduce((sum, a) => sum + (a.percentage || 0), 0) / completedForAvg.length
       : 0;
 
-    // Calculate trends (compare last 7 days vs previous 7 days) based on UNIQUE attempts
+    // Calculate trends (compare last 7 days vs previous 7 days)
     const now = new Date();
     const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const fourteenDaysAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
 
-    const recentAttempts = uniqueAttempts.filter(a => a.submittedAt && new Date(a.submittedAt) > sevenDaysAgo).length;
-    const previousAttempts = uniqueAttempts.filter(a => {
+    const recentAttempts = attempts.filter(a => a.submittedAt && new Date(a.submittedAt) > sevenDaysAgo).length;
+    const previousAttempts = attempts.filter(a => {
       if (!a.submittedAt) return false;
       const date = new Date(a.submittedAt);
       return date > fourteenDaysAgo && date <= sevenDaysAgo;
@@ -154,7 +166,8 @@ export function AdminDashboard({
       totalAttempts,
       avgScore,
       attemptsTrend,
-      recentAttempts
+      recentAttempts,
+      ghostAttempts
     };
   }, [questions, tests, attempts]);
 
@@ -264,6 +277,46 @@ export function AdminDashboard({
               animate="show"
               className="space-y-6"
             >
+              {stats.ghostAttempts > 0 && (
+                <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4 flex items-start gap-3">
+                  <div className="p-2 bg-yellow-100 dark:bg-yellow-800 rounded-full">
+                    <Activity className="w-5 h-5 text-yellow-600 dark:text-yellow-400" />
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="font-semibold text-yellow-900 dark:text-yellow-100">Data Mismatch Detected</h4>
+                    <p className="text-sm text-yellow-700 dark:text-yellow-300 mt-1">
+                      There are <strong>{stats.ghostAttempts} results</strong> from tests that are not currently visible in the list.
+                      This usually happens when older tests are on other pages or have been deleted but their results kept.
+                    </p>
+                    <div className="mt-3 flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="border-yellow-200 hover:bg-yellow-100 dark:border-yellow-800 dark:hover:bg-yellow-900"
+                        onClick={() => fetchMoreTests && fetchMoreTests()}
+                        disabled={!hasMoreTests}
+                      >
+                        {hasMoreTests ? "Load More Tests" : "All Tests Loaded"}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        onClick={() => {
+                          if (window.confirm("This will permanently delete attempts linked to missing/deleted tests. Are you sure?")) {
+                            onCleanupOrphanedAttempts()
+                              .then(count => alert(`Cleaned up ${count} orphaned attempts.`))
+                              .catch(err => console.error(err));
+                          }
+                        }}
+                      >
+                        Cleanup Orphaned
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Quick Actions */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <motion.div variants={item}>
@@ -428,6 +481,41 @@ export function AdminDashboard({
                       disabled={isCleaningUp}
                     >
                       {isCleaningUp ? 'Cleaning...' : 'Run Cleanup'}
+                    </Button>
+                  </CardContent>
+                </Card>
+              </motion.div>
+
+              <motion.div variants={item}>
+                <Card className="elevated-card border-l-4 border-l-red-500 bg-white dark:bg-gray-800 dark:border-gray-700 dark:border-l-red-500">
+                  <CardContent className="p-4 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-red-100 dark:bg-red-900/30 rounded-lg flex items-center justify-center">
+                        <Users className="w-5 h-5 text-red-600 dark:text-red-400" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-gray-900 dark:text-white">Cleanup Invalid Attempts</p>
+                        <p className="text-sm text-muted-foreground dark:text-gray-400">Remove data from deleted users</p>
+                      </div>
+                    </div>
+                    <Button
+                      variant="outline"
+                      className="border-red-300 text-red-600 hover:bg-red-50"
+                      onClick={async () => {
+                        if (!confirm("This will delete all test attempts linked to users that no longer exist. Continue?")) return;
+                        setIsCleaningUp(true);
+                        try {
+                          const count = await onCleanupOrphanedAttempts();
+                          alert(`Cleanup complete! Deleted ${count} orphaned attempts.`);
+                        } catch (err) {
+                          alert('Failed to cleanup attempts.');
+                          console.error(err);
+                        }
+                        setIsCleaningUp(false);
+                      }}
+                      disabled={isCleaningUp}
+                    >
+                      {isCleaningUp ? 'Cleaning...' : 'Fix Data'}
                     </Button>
                   </CardContent>
                 </Card>
@@ -607,7 +695,6 @@ export function AdminDashboard({
                             variant="ghost"
                             size="icon"
                             className="text-red-500 hover:text-red-600 hover:bg-red-50 h-8 w-8"
-                            onClick={() => setTestToDelete(test.id)}
                           >
                             <Trash2 className="w-4 h-4" />
                           </Button>
@@ -616,6 +703,15 @@ export function AdminDashboard({
                     ))
                   )}
                 </div>
+
+                {hasMoreTests && fetchMoreTests && (
+                  <div className="mt-4 text-center">
+                    <Button variant="outline" onClick={() => fetchMoreTests()}>
+                      Load More Tests
+                    </Button>
+                  </div>
+                )}
+
               </CardContent>
             </Card>
           </TabsContent>

@@ -6,9 +6,10 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Clock, ChevronLeft, ChevronRight, Flag, AlertTriangle, Keyboard, Info, PauseCircle } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Flag, AlertTriangle, Keyboard, Info, PauseCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Test, Question, User, TestAttempt } from '@/types';
+import { ExamTimer, type ExamTimerHandle } from '@/components/ExamTimer';
 
 interface TakeTestProps {
   user: User;
@@ -40,15 +41,18 @@ export function TakeTest({
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
 
   const [answers, setAnswers] = useState<Record<string, 'A' | 'B' | 'C' | 'D' | null>>(() => {
-    console.log('TakeTest INIT - existingAttempt:', existingAttempt?.id, 'answers:', existingAttempt?.answers ? Object.keys(existingAttempt.answers).length : 0, 'timeRemaining:', existingAttempt?.timeRemaining);
+    console.log('TakeTest INIT - existingAttempt:', existingAttempt?.id, 'answers:', existingAttempt?.answers ? Object.keys(existingAttempt.answers).length : 0);
     return existingAttempt?.answers || {};
   });
 
   const [flaggedQuestions, setFlaggedQuestions] = useState<Set<number>>(new Set());
 
-  const [timeLeft, setTimeLeft] = useState(() => {
-    return existingAttempt?.timeRemaining ?? (test.timeLimitMinutes * 60);
-  });
+  // Timer Ref
+  const timerRef = useRef<ExamTimerHandle>(null);
+
+  // Initial time calculation (only for passing to Timer component)
+  // We use a ref to track if we've already initialized time to avoid resetting on re-renders if prop changes unexpectedly
+  const initialTimeRef = useRef(existingAttempt?.timeRemaining ?? (test.timeLimitMinutes * 60));
 
   const [warningCount, setWarningCount] = useState(() => {
     return existingAttempt?.warningCount || 0;
@@ -84,18 +88,19 @@ export function TakeTest({
           onUpdateAttempt(currentAttemptId, { warningCount: newCount });
         }
 
+        // Show warning dialog unless we've already exceeded the threshold
+        // (auto-submit is handled by the useEffect watching warningCount)
+        if (newCount <= 2) {
+          setShowWarningDialog(true);
+        }
+
         return newCount;
       });
-
-      if (warningCount < 2) {
-        setShowWarningDialog(true);
-      }
     }
   });
 
   // Use ref to always have synchronous access to latest answers (critical for auto-submit)
   const answersRef = useRef<Record<string, 'A' | 'B' | 'C' | 'D' | null>>(existingAttempt?.answers || {});
-  const timeLeftRef = useRef<number>(existingAttempt?.timeRemaining ?? (test.timeLimitMinutes * 60));
 
   // Periodic Firestore Sync (Every 10s) to ensure Dashboard has fresh data
   useEffect(() => {
@@ -103,11 +108,13 @@ export function TakeTest({
 
     const syncInterval = setInterval(() => {
       const currentAttemptId = attemptIdRef.current;
+      const currentTime = timerRef.current?.getTime() ?? 0;
+
       if (currentAttemptId) {
         console.log('Auto-syncing to Firestore...', { answers: Object.keys(answersRef.current).length });
         onUpdateAttempt(currentAttemptId, {
           answers: answersRef.current,
-          timeRemaining: timeLeftRef.current,
+          timeRemaining: currentTime,
           lastUpdated: new Date()
         }).catch(err => console.error("Auto-sync failed:", err));
       }
@@ -131,7 +138,13 @@ export function TakeTest({
           alert("Critical Error: Failed to initialize exam session. Please check your internet connection and reload the page.");
         });
     } else if (existingAttempt && existingAttempt.id !== attemptIdRef.current) {
-      // Prop update handling
+      // If attempt is properly completed, do not allow re-entry. Redirect to results.
+      if (existingAttempt.status === 'completed') {
+        console.log('Attempt is already completed. Redirecting to results...');
+        onComplete(existingAttempt);
+        return;
+      }
+
       console.log('New existingAttempt prop received:', existingAttempt.id);
       setAttemptId(existingAttempt.id);
       attemptIdRef.current = existingAttempt.id;
@@ -139,6 +152,11 @@ export function TakeTest({
         console.log('Hydrating answers from prop update:', Object.keys(existingAttempt.answers).length);
         setAnswers(existingAttempt.answers);
         answersRef.current = existingAttempt.answers;
+      }
+
+      if (existingAttempt.timeRemaining !== undefined && timerRef.current) {
+        console.log('Restoring timer from existing attempt prop:', existingAttempt.timeRemaining);
+        timerRef.current.setTime(existingAttempt.timeRemaining);
       }
     }
   }, [existingAttempt, test.id, onStartAttempt, answers]);
@@ -196,10 +214,13 @@ export function TakeTest({
           setAnswers(parsed.answers);
           answersRef.current = parsed.answers; // Direct ref update!
         }
-        if (parsed.timeLeft !== undefined) {
-          setTimeLeft(parsed.timeLeft);
-          timeLeftRef.current = parsed.timeLeft; // Direct ref update!
+
+        if (parsed.timeLeft !== undefined && timerRef.current) {
+          console.log('Restoring timer from local state:', parsed.timeLeft);
+          timerRef.current.setTime(parsed.timeLeft);
+          initialTimeRef.current = parsed.timeLeft; // Update ref for good measure
         }
+
         if (parsed.attemptId) {
           setAttemptId(parsed.attemptId);
           attemptIdRef.current = parsed.attemptId;
@@ -207,16 +228,10 @@ export function TakeTest({
         }
 
         // Logic for warnings (Check against Firestore or Local)
-        // If we have an existing attempt passed from Dashboard, utilize it for warning tracking
         const dbWarningCount = existingAttempt?.warningCount || 0;
         const localWarningCount = parsed.warningCount || 0;
         const baseWarningCount = Math.max(dbWarningCount, localWarningCount);
 
-        // If resuming an "in-progress" test, it counts as an interruption
-        // (unless we paused cleanly, but 'paused' status handled by parent usually?)
-        // Actually, if we are recovering from LocalStorage, it implies a refresh/crash unless status was paused.
-
-        // Simple Rule: If page reloaded (useEffect runs again), increment warning.
         const newCount = baseWarningCount + 1;
         setWarningCount(newCount);
         console.log('Restoration/Interruption detected. Warning count:', newCount);
@@ -249,10 +264,6 @@ export function TakeTest({
         setAnswers(existingAttempt.answers);
         answersRef.current = existingAttempt.answers; // Direct ref update!
       }
-      if (existingAttempt.timeRemaining !== undefined) {
-        setTimeLeft(existingAttempt.timeRemaining);
-        timeLeftRef.current = existingAttempt.timeRemaining; // Direct ref update!
-      }
 
       // If status is 'in-progress', it means they didn't pause properly -> Interruption
       if (existingAttempt.status === 'in-progress') {
@@ -279,19 +290,20 @@ export function TakeTest({
     if (warningCount > 2 && isExamStarted && !isSubmitting) {
       handleSubmit();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [warningCount, isExamStarted, isSubmitting]);
 
   // Save state to local storage ON EVERY ANSWER CHANGE (critical for recovery)
   useEffect(() => {
     // Update refs
     answersRef.current = answers;
-    timeLeftRef.current = timeLeft;
 
     // Save to localStorage immediately - don't wait for attemptId for answers
     if (isExamStarted) {
+      const currentTime = timerRef.current?.getTime() ?? 0;
       const state = {
         answers,
-        timeLeft,
+        timeLeft: currentTime,
         warningCount,
         attemptId: attemptIdRef.current,
         timestamp: Date.now()
@@ -299,7 +311,7 @@ export function TakeTest({
       localStorage.setItem(`exam_state_${test.id}_${user.id}`, JSON.stringify(state));
       console.log('Saved to localStorage:', { answeredCount: Object.keys(answers).length });
     }
-  }, [answers, timeLeft, warningCount, isExamStarted, test.id, user.id]);
+  }, [answers, warningCount, isExamStarted, test.id, user.id]);
 
   // Prevent accidental close/refresh
   useEffect(() => {
@@ -312,28 +324,6 @@ export function TakeTest({
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [isExamStarted, showTimeUpDialog, isSubmitting]);
-
-  // Timer effect
-  useEffect(() => {
-    if (!isExamStarted || isSubmitting) return;
-
-    const timer = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          setShowTimeUpDialog(true);
-          return 0;
-        }
-        if (prev === 300) {
-          setShowTimeWarning(true);
-          setTimeout(() => setShowTimeWarning(false), 5000);
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [isExamStarted, isSubmitting]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -381,12 +371,6 @@ export function TakeTest({
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, [isExamStarted, currentQuestionIndex, showSubmitDialog, showTimeUpDialog, showInstructions]);
-
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
 
   const handleAnswer = (option: 'A' | 'B' | 'C' | 'D') => {
     setAnswers(prev => ({
@@ -436,9 +420,11 @@ export function TakeTest({
     if (!attemptId) return;
 
     // Save current state to Firestore
+    const currentTime = timerRef.current?.getTime() ?? 0;
+
     await onUpdateAttempt(attemptId, {
       answers,
-      timeRemaining: timeLeft,
+      timeRemaining: currentTime,
       status: 'paused',
       warningCount
     });
@@ -478,7 +464,7 @@ export function TakeTest({
       }
     }
 
-    const currentTimeLeft = timeLeftRef.current;
+    const currentTimeLeft = timerRef.current?.getTime() ?? 0;
     const timeTaken = test.timeLimitMinutes * 60 - currentTimeLeft;
 
     // Calculate results locally for immediate display
@@ -558,15 +544,10 @@ export function TakeTest({
   };
 
   const attemptedCount = Object.values(answers).filter(a => a !== null).length;
-  const notVisitedCount = shuffledQuestions.length - attemptedCount - flaggedQuestions.size;
+  const notVisitedCount = shuffledQuestions.filter((q, idx) =>
+    (answers[q.id] === null || answers[q.id] === undefined) && !flaggedQuestions.has(idx)
+  ).length;
   const progress = ((currentQuestionIndex + 1) / shuffledQuestions.length) * 100;
-
-  // Timer color classes
-  const getTimerClass = () => {
-    if (timeLeft < 60) return 'timer-danger';
-    if (timeLeft < 300) return 'timer-warning';
-    return 'timer-normal';
-  };
 
   return (
     <div className="min-h-screen bg-gray-50/50 dark:bg-gray-950 transition-colors duration-300">
@@ -581,14 +562,16 @@ export function TakeTest({
               </p>
             </div>
             <div className="flex items-center gap-4">
-              <div className={cn(
-                "flex items-center gap-2 px-4 py-2 rounded-lg font-mono text-lg transition-all",
-                getTimerClass()
-              )}>
-                <Clock className="w-5 h-5" />
-                <span className="font-bold">{formatTime(timeLeft)}</span>
-                {timeLeft < 60 && <AlertTriangle className="w-5 h-5 animate-bounce" />}
-              </div>
+              <ExamTimer
+                ref={timerRef}
+                initialTime={initialTimeRef.current}
+                onTimeUp={() => setShowTimeUpDialog(true)}
+                onWarning={() => {
+                  setShowTimeWarning(true);
+                  setTimeout(() => setShowTimeWarning(false), 5000);
+                }}
+                isPaused={!isExamStarted || isSubmitting || showSubmitDialog || showInstructions}
+              />
               <Button
                 variant="outline"
                 size="sm"
@@ -621,7 +604,7 @@ export function TakeTest({
         <Alert variant="destructive" className="fixed top-20 right-4 w-80 z-50 shadow-lg">
           <AlertTriangle className="h-4 w-4" />
           <AlertDescription>
-            <strong>Time Warning!</strong> Only {Math.floor(timeLeft / 60)} minutes remaining
+            <strong>Time Warning!</strong> Less than 5 minutes remaining
           </AlertDescription>
         </Alert>
       )}
@@ -701,7 +684,7 @@ export function TakeTest({
               </CardHeader>
               <CardContent className="space-y-6">
                 {/* Question Text */}
-                <div className="text-lg font-medium text-gray-900 dark:text-gray-100 leading-relaxed preserve-whitespace">
+                <div className="text-lg font-medium text-gray-900 dark:text-gray-100 leading-relaxed whitespace-pre-wrap">
                   {language === 'or' && currentQuestion.questionTextOR
                     ? currentQuestion.questionTextOR
                     : currentQuestion.questionTextEN}
@@ -873,7 +856,7 @@ export function TakeTest({
                 <h4 className="font-semibold text-gray-900 mb-3">Important Guidelines</h4>
                 <ul className="list-disc list-inside space-y-2 text-sm text-gray-600">
                   <li>Do not refresh the page during the exam</li>
-                  <li>Your progress is auto-saved every 30 seconds</li>
+                  <li>Your progress is auto-saved every 10 seconds</li>
                   <li>Use "Mark for Review" if you are unsure about an answer</li>
                   <li>Use keyboard shortcuts for faster navigation (press ? during exam)</li>
                   <li>The test will auto-submit when time is up</li>

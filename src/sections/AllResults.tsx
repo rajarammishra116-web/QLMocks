@@ -45,10 +45,12 @@ export function AllResults({
       if (filterClass !== 'all' && test.classLevel !== Number(filterClass)) {
         return false;
       }
-      // Board filter can be added here when tests have a board property
+      if (filterBoard !== 'all' && test.board && test.board !== filterBoard) {
+        return false;
+      }
       return true;
     });
-  }, [tests, filterClass]);
+  }, [tests, filterClass, filterBoard]);
 
   // Get test statistics (based on FIRST attempt only)
   const testStats = useMemo(() => {

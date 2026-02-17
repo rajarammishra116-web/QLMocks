@@ -223,7 +223,11 @@ export function ResultPage({
             <CardContent className="p-6 text-center">
               <p className="text-gray-500 dark:text-gray-400 text-sm mb-1">{t('result.accuracy')}</p>
               <p className="text-4xl font-bold text-gray-900 dark:text-gray-100">
-                {(((attempt.correctCount || 0) / ((attempt.correctCount || 0) + (attempt.incorrectCount || 0))) * 100 || 0).toFixed(1)}%
+                {(() => {
+                  const correct = attempt.correctCount || 0;
+                  const answered = correct + (attempt.incorrectCount || 0);
+                  return answered > 0 ? ((correct / answered) * 100).toFixed(1) : '0.0';
+                })()}%
               </p>
               <div className="flex justify-center gap-4 mt-3 text-sm">
                 <span className="text-green-600 flex items-center gap-1">

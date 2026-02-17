@@ -42,6 +42,9 @@ export function UserList({ onFetchUsers, onDeleteUser }: UserListProps) {
         }
     };
 
+    // Auto-load removed per user request for performance
+
+
     const handleDeleteUser = async (user: User) => {
         if (user.role === 'admin') {
             alert('Cannot delete admin users from the dashboard.');
@@ -204,7 +207,7 @@ export function UserList({ onFetchUsers, onDeleteUser }: UserListProps) {
                                                 {user.role === 'student' ? (
                                                     <div className="flex flex-row md:flex-col items-center gap-2 md:gap-1">
                                                         <span className="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
-                                                            Class {user.class || 'N/A'}
+                                                            Class {(user as any).class || (user as any).classLevel || 'N/A'}
                                                         </span>
                                                         <span className="text-xs text-muted-foreground">{user.board || 'N/A'}</span>
                                                     </div>
